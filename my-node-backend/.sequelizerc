@@ -1,0 +1,10 @@
+const path = require('path');
+
+module.exports = {
+  // Le dice a la CLI que use el archivo de configuración que acabamos de crear
+  'config': path.resolve('config', 'database.js'),
+  
+  // Le dice dónde están tus otras carpetas
+  'models-path': path.resolve('src', 'models'),
+  'migrations-path': path.resolve('src', 'migrations')
+};
