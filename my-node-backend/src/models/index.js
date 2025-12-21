@@ -26,6 +26,22 @@ const initMalla = require('./mallas');
 // =========================================================================
 const initClasificacionAcademica = require('./clasificacion_academica');
 
+// =========================================================================
+// --- MODELOS PARA PROGRAMA ANALÍTICO ---
+// =========================================================================
+const initPlantillaPrograma = require('./plantillas_programa');
+const initSeccionPlantilla = require('./secciones_plantilla');
+const initCampoSeccion = require('./campos_seccion');
+const initAsignacionProgramaDocente = require('./asignaciones_programa_docente');
+const initContenidoPrograma = require('./contenido_programa');
+const initFilaTablaPrograma = require('./filas_tabla_programa');
+const initValorCampoPrograma = require('./valores_campo_programa');
+const initTituloExtraido = require('./TituloExtraido');
+const initAgrupacionTitulo = require('./AgrupacionTitulo');
+// Modelos para Syllabus con pestañas
+const initTituloExtraidoSyllabus = require('./TituloExtraidoSyllabus');
+const initAgrupacionTituloSyllabus = require('./AgrupacionTituloSyllabus');
+
 
 // Inicializa el modelo Usuario
 const Usuario = initUsuario(sequelize, Sequelize.DataTypes);
@@ -49,6 +65,22 @@ const Malla = initMalla(sequelize, Sequelize.DataTypes);
 // --- PASO 2: INICIALIZA TU NUEVO MODELO ---
 // =========================================================================
 const ClasificacionAcademica = initClasificacionAcademica(sequelize, Sequelize.DataTypes);
+
+// =========================================================================
+// --- INICIALIZAR MODELOS DE PROGRAMA ANALÍTICO ---
+// =========================================================================
+const PlantillaPrograma = initPlantillaPrograma(sequelize, Sequelize.DataTypes);
+const SeccionPlantilla = initSeccionPlantilla(sequelize, Sequelize.DataTypes);
+const CampoSeccion = initCampoSeccion(sequelize, Sequelize.DataTypes);
+const AsignacionProgramaDocente = initAsignacionProgramaDocente(sequelize, Sequelize.DataTypes);
+const ContenidoPrograma = initContenidoPrograma(sequelize, Sequelize.DataTypes);
+const FilaTablaPrograma = initFilaTablaPrograma(sequelize, Sequelize.DataTypes);
+const ValorCampoPrograma = initValorCampoPrograma(sequelize, Sequelize.DataTypes);
+const TituloExtraido = initTituloExtraido(sequelize, Sequelize.DataTypes);
+const AgrupacionTitulo = initAgrupacionTitulo(sequelize, Sequelize.DataTypes);
+// Modelos de Syllabus
+const TituloExtraidoSyllabus = initTituloExtraidoSyllabus(sequelize, Sequelize.DataTypes);
+const AgrupacionTituloSyllabus = initAgrupacionTituloSyllabus(sequelize, Sequelize.DataTypes);
 
 
 // Definir relaciones
@@ -118,6 +150,59 @@ Facultad.hasMany(Malla, { foreignKey: 'facultad_id', as: 'mallas' });
 Malla.belongsTo(Carrera, { foreignKey: 'carrera_id', as: 'carrera' });
 Carrera.hasMany(Malla, { foreignKey: 'carrera_id', as: 'mallas' });
 
+// =========================================================================
+// --- ASOCIACIONES PROGRAMA ANALÍTICO ---
+// =========================================================================
+// PlantillaPrograma asociaciones
+PlantillaPrograma.belongsTo(Usuario, { foreignKey: 'usuario_creador_id', as: 'creador' });
+PlantillaPrograma.hasMany(SeccionPlantilla, { foreignKey: 'plantilla_id', as: 'secciones' });
+PlantillaPrograma.hasMany(ProgramasAnaliticos, { foreignKey: 'plantilla_id', as: 'programas' });
+
+// SeccionPlantilla asociaciones
+SeccionPlantilla.belongsTo(PlantillaPrograma, { foreignKey: 'plantilla_id', as: 'plantilla' });
+SeccionPlantilla.hasMany(CampoSeccion, { foreignKey: 'seccion_id', as: 'campos' });
+
+// CampoSeccion asociaciones
+CampoSeccion.belongsTo(SeccionPlantilla, { foreignKey: 'seccion_id', as: 'seccion' });
+
+// AsignacionProgramaDocente asociaciones
+AsignacionProgramaDocente.belongsTo(ProgramasAnaliticos, { foreignKey: 'programa_id', as: 'programa' });
+AsignacionProgramaDocente.belongsTo(Profesor, { foreignKey: 'profesor_id', as: 'profesor' });
+AsignacionProgramaDocente.belongsTo(Asignatura, { foreignKey: 'asignatura_id', as: 'asignatura' });
+AsignacionProgramaDocente.belongsTo(Nivel, { foreignKey: 'nivel_id', as: 'nivel' });
+AsignacionProgramaDocente.belongsTo(Paralelo, { foreignKey: 'paralelo_id', as: 'paralelo' });
+AsignacionProgramaDocente.belongsTo(Periodo, { foreignKey: 'periodo_id', as: 'periodo' });
+
+// ProgramasAnaliticos asociaciones con plantilla
+ProgramasAnaliticos.belongsTo(PlantillaPrograma, { foreignKey: 'plantilla_id', as: 'plantilla' });
+ProgramasAnaliticos.hasMany(AsignacionProgramaDocente, { foreignKey: 'programa_id', as: 'asignaciones' });
+ProgramasAnaliticos.hasMany(ContenidoPrograma, { foreignKey: 'programa_analitico_id', as: 'contenidos' });
+
+// ContenidoPrograma asociaciones
+ContenidoPrograma.belongsTo(ProgramasAnaliticos, { foreignKey: 'programa_analitico_id', as: 'programa' });
+ContenidoPrograma.belongsTo(SeccionPlantilla, { foreignKey: 'seccion_plantilla_id', as: 'seccion' });
+ContenidoPrograma.hasMany(FilaTablaPrograma, { foreignKey: 'contenido_programa_id', as: 'filas' });
+
+// FilaTablaPrograma asociaciones
+FilaTablaPrograma.belongsTo(ContenidoPrograma, { foreignKey: 'contenido_programa_id', as: 'contenido' });
+FilaTablaPrograma.hasMany(ValorCampoPrograma, { foreignKey: 'fila_tabla_id', as: 'valores' });
+
+// ValorCampoPrograma asociaciones
+ValorCampoPrograma.belongsTo(FilaTablaPrograma, { foreignKey: 'fila_tabla_id', as: 'fila' });
+ValorCampoPrograma.belongsTo(CampoSeccion, { foreignKey: 'campo_seccion_id', as: 'campo' });
+
+// =========================================================================
+// --- ASOCIACIONES TITULO EXTRAIDO ---
+// =========================================================================
+TituloExtraido.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
+Usuario.hasMany(TituloExtraido, { foreignKey: 'usuario_id', as: 'titulos_extraidos' });
+
+// =========================================================================
+// --- ASOCIACIONES SYLLABUS ---
+// =========================================================================
+TituloExtraidoSyllabus.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
+Usuario.hasMany(TituloExtraidoSyllabus, { foreignKey: 'usuario_id', as: 'titulos_syllabus' });
+
 
 module.exports = {
   sequelize,
@@ -137,10 +222,20 @@ module.exports = {
   DistribucionHoras,
   UnidadTematica,
   AsignaturaRequisito,
-  // =========================================================================
-  // --- PASO 4: EXPORTA TU NUEVO MODELO ---
-  // =========================================================================
   ClasificacionAcademica, 
   Periodo,
   Malla,
+  // Modelos de Programa Analítico
+  PlantillaPrograma,
+  SeccionPlantilla,
+  CampoSeccion,
+  AsignacionProgramaDocente,
+  ContenidoPrograma,
+  FilaTablaPrograma,
+  ValorCampoPrograma,
+  TituloExtraido,
+  AgrupacionTitulo,
+  // Modelos de Syllabus
+  TituloExtraidoSyllabus,
+  AgrupacionTituloSyllabus
 };

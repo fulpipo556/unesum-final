@@ -22,6 +22,14 @@ module.exports = function(sequelize, DataTypes) {
         model: 'usuarios',
         key: 'id'
       }
+    },
+    plantilla_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'plantillas_programa',
+        key: 'id'
+      }
     }
   }, {
     sequelize,

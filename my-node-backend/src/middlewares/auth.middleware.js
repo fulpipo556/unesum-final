@@ -90,6 +90,13 @@ const authorize = (roles = []) => {
   }
   return (req, res, next) => {
     // Esta función ahora funcionará correctamente porque `req.user.rol` es fiable
+    console.log('🔐 Autorización:', {
+      userRole: req.user?.rol,
+      requiredRoles: roles,
+      hasUser: !!req.user,
+      isAuthorized: req.user && roles.length && roles.includes(req.user.rol)
+    });
+    
     if (req.user && roles.length && roles.includes(req.user.rol)) {
       next();
     } else {

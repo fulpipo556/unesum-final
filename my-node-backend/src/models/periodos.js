@@ -15,11 +15,11 @@ module.exports = function(sequelize, DataTypes) {
     },
     fecha_inicio: {
       type: DataTypes.DATEONLY,
-      allowNull: false
+      allowNull: true // ✅ Cambiar a true temporalmente para permitir migración
     },
     fecha_fin: {
       type: DataTypes.DATEONLY,
-      allowNull: false
+      allowNull: true // ✅ Cambiar a true temporalmente para permitir migración
     },
     estado: {
       type: DataTypes.STRING(15),

@@ -6,8 +6,8 @@ const Administrador = db.Usuario; // Modelo para administradores
 const Profesor = db.Profesor; 
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) {
+    const { correo_electronico, contraseña } = req.body;
+    if (!correo_electronico || !contraseña) {
       return res.status(400).json({ success: false, message: 'Email y contraseña son requeridos.' });
     }
 
@@ -16,12 +16,12 @@ exports.login = async (req, res) => {
 
     // 1. Intentar encontrar al usuario como Administrador/Usuario
     // Asumiendo que tu modelo se llama 'usuarios' en la BD
-    const admin = await db.Usuario.findOne({ where: { correo_electronico: email } }); // O db.Administrador
+    const admin = await db.Usuario.findOne({ where: { correo_electronico: correo_electronico } }); // O db.Administrador
 
     if (admin) {
       // --- ¡CAMBIO CRÍTICO AQUÍ! ---
       // Accede a la propiedad 'contraseña' que coincide con la columna de la base de datos.
-      const isPasswordCorrect = await bcrypt.compare(password, admin.contraseña);
+      const isPasswordCorrect = await bcrypt.compare(contraseña, admin.contraseña);
       if (isPasswordCorrect) {
         user = admin;
         rol = 'administrador'; // O admin.rol si lo tienes en la tabla
@@ -30,11 +30,11 @@ exports.login = async (req, res) => {
 
     // 2. Si no es un admin válido, intentar como Profesor
     if (!user) {
-      const profesor = await db.Profesor.findOne({ where: { email: email } });
+      const profesor = await db.Profesor.findOne({ where: { email: correo_electronico } });
       if (profesor) {
         // --- SIN CAMBIOS AQUÍ ---
         // La propiedad 'password' es correcta para la tabla de profesores.
-        const isPasswordCorrect = await bcrypt.compare(password, profesor.password);
+        const isPasswordCorrect = await bcrypt.compare(contraseña, profesor.password);
         if (isPasswordCorrect) {
           user = profesor;
           rol = 'profesor';
@@ -104,8 +104,9 @@ exports.getMe = async (req, res) => {
     // El ID del usuario está en req.user.id (o como lo hayas configurado).
     try {
         // Busca al usuario en AMBAS tablas para estar seguros.
-        let user = await db.Administrador.findByPk(req.user.id);
-        if (!user) {
+        // CORRECCIÓN: Usar db.Usuario en lugar de db.Administrador
+        let user = await db.Usuario.findByPk(req.user.id);
+        if (!user && db.Profesor) {
             user = await db.Profesor.findByPk(req.user.id);
         }
 
