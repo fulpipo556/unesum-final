@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { FileSpreadsheet, Trash2, Eye, Download, Image as ImageIcon } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
@@ -111,12 +110,22 @@ export default function ListaProgramasAnaliticosPage() {
             <h1 className="text-4xl font-bold text-[#00563F] mb-2">Programas Analíticos</h1>
             <p className="text-gray-600">Lista de programas analíticos cargados en el sistema</p>
           </div>
-          <Button
-            onClick={() => window.location.href = "/dashboard/admin/programa-analitico"}
-            className="bg-[#00563F] hover:bg-[#004830] text-white"
-          >
-            + Nuevo Programa
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={() => window.location.href = "/dashboard/admin/programa-analitico/subir"}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              Subir Excel
+            </Button>
+            <Button
+              onClick={() => window.location.href = "/dashboard/admin/programa-analitico"}
+              variant="outline"
+              className="border-[#00563F] text-[#00563F] hover:bg-[#00563F] hover:text-white"
+            >
+              Volver
+            </Button>
+          </div>
         </div>
 
         {programas.length === 0 ? (
@@ -137,71 +146,90 @@ export default function ListaProgramasAnaliticosPage() {
           </Card>
         ) : (
           <div className="space-y-4">
-            {programas.map((programa) => (
-              <Card key={programa.id} className="border-2 border-emerald-200 hover:shadow-lg transition-shadow">
-                <CardHeader className="bg-gradient-to-r from-emerald-50 to-teal-50">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <CardTitle className="text-xl text-[#00563F] mb-2">
-                        {programa.datos_tabla.datos_generales.asignatura}
-                      </CardTitle>
-                      <CardDescription>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-                          <div>
-                            <span className="text-xs text-gray-500">Código:</span>
-                            <p className="text-sm font-semibold text-gray-700">
-                              {programa.datos_tabla.datos_generales.codigo}
-                            </p>
+            {programas.map((programa) => {
+              // Obtener datos de forma segura
+              const datosGenerales = programa.datos_tabla?.datos_generales || {}
+              const asignatura = datosGenerales.asignatura || programa.nombre || 'Sin nombre'
+              const codigo = datosGenerales.codigo || 'N/A'
+              const carrera = datosGenerales.carrera || 'N/A'
+              const nivel = datosGenerales.nivel || 'N/A'
+              const periodo = datosGenerales.periodo_academico || 'N/A'
+              const docente = datosGenerales.docente || 'No asignado'
+              const fechaCreacion = new Date(programa.createdAt).toLocaleDateString('es-ES')
+              const unidadesTematicas = programa.datos_tabla?.unidades_tematicas?.length || 0
+              const archivoExcel = programa.datos_tabla?.archivo_excel || 'No disponible'
+
+              return (
+                <Card key={programa.id} className="border-2 border-emerald-200 hover:shadow-lg transition-shadow">
+                  <CardHeader className="bg-gradient-to-r from-emerald-50 to-teal-50">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <CardTitle className="text-xl text-[#00563F] mb-2">
+                          {asignatura}
+                        </CardTitle>
+                        <CardDescription>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                            <div>
+                              <span className="text-xs text-gray-500">Código:</span>
+                              <p className="text-sm font-semibold text-gray-700">
+                                {codigo}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-xs text-gray-500">Carrera:</span>
+                              <p className="text-sm font-semibold text-gray-700">
+                                {carrera}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-xs text-gray-500">Nivel:</span>
+                              <p className="text-sm font-semibold text-gray-700">
+                                {nivel}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-xs text-gray-500">Periodo:</span>
+                              <p className="text-sm font-semibold text-gray-700">
+                                {periodo}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-xs text-gray-500">Fecha:</span>
+                              <p className="text-sm font-semibold text-gray-700">
+                                {fechaCreacion}
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <span className="text-xs text-gray-500">Carrera:</span>
-                            <p className="text-sm font-semibold text-gray-700">
-                              {programa.datos_tabla.datos_generales.carrera}
-                            </p>
-                          </div>
-                          <div>
-                            <span className="text-xs text-gray-500">Nivel:</span>
-                            <p className="text-sm font-semibold text-gray-700">
-                              {programa.datos_tabla.datos_generales.nivel}
-                            </p>
-                          </div>
-                          <div>
-                            <span className="text-xs text-gray-500">Periodo:</span>
-                            <p className="text-sm font-semibold text-gray-700">
-                              {programa.datos_tabla.datos_generales.periodo_academico}
-                            </p>
-                          </div>
-                        </div>
-                      </CardDescription>
+                        </CardDescription>
+                      </div>
+                      <div className="flex gap-2 ml-4">
+                        {programa.datos_tabla?.archivo_escudo && (
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300">
+                            <ImageIcon className="h-3 w-3 mr-1" />
+                            Con Escudo
+                          </Badge>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex gap-2 ml-4">
-                      {programa.datos_tabla.archivo_escudo && (
-                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300">
-                          <ImageIcon className="h-3 w-3 mr-1" />
-                          Con Escudo
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <p className="text-sm text-gray-600">
-                        <span className="font-semibold">Docente:</span>{" "}
-                        {programa.datos_tabla.datos_generales.docente}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">
-                        <span className="font-semibold">Unidades Temáticas:</span>{" "}
-                        {programa.datos_tabla.unidades_tematicas.length}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">
-                        <span className="font-semibold">Archivo:</span>{" "}
-                        {programa.datos_tabla.archivo_excel}
+                  </CardHeader>
+                  <CardContent className="pt-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <p className="text-sm text-gray-600">
+                          <span className="font-semibold">Docente:</span>{" "}
+                          {docente}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">
+                          <span className="font-semibold">Unidades Temáticas:</span>{" "}
+                          {unidadesTematicas}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">
+                          <span className="font-semibold">Archivo:</span>{" "}
+                          {archivoExcel}
                       </p>
                     </div>
                     <div>
@@ -216,6 +244,7 @@ export default function ListaProgramasAnaliticosPage() {
                     <Button
                       variant="outline"
                       size="sm"
+                      onClick={() => window.location.href = `/dashboard/admin/programa-analitico/detalle/${programa.id}`}
                       className="border-blue-300 text-blue-700 hover:bg-blue-50"
                     >
                       <Eye className="h-4 w-4 mr-1" />
@@ -241,7 +270,8 @@ export default function ListaProgramasAnaliticosPage() {
                   </div>
                 </CardContent>
               </Card>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

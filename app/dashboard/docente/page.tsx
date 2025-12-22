@@ -4,7 +4,7 @@ import { ProtectedRoute } from "@/components/auth/protected-route"
 import { MainHeader } from "@/components/layout/main-header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { BookOpen, Activity, User, Calendar, FileText, FileSpreadsheet } from "lucide-react"
+import { BookOpen, Activity, User, Calendar, FileText, FileSpreadsheet, ListChecks, FileCheck } from "lucide-react"
 import Link from "next/link"
 
 export default function DocenteDashboard() {
@@ -17,11 +17,32 @@ export default function DocenteDashboard() {
       color: "bg-emerald-500",
     },
     {
-      title: "Programa Analítico",
-      description: "Crear y gestionar programas analíticos",
+      title: "Formularios Dinámicos",
+      description: "Completar formularios basados en plantillas del administrador",
       icon: FileSpreadsheet,
-      href: "/dashboard/docente/programa-analitico/dinamico",
+      href: "/dashboard/docente/formularios",
       color: "bg-teal-500",
+    },
+    {
+      title: "Formularios Extraídos",
+      description: "Completar formularios generados desde archivos Excel/Word",
+      icon: ListChecks,
+      href: "/dashboard/docente/formularios-dinamicos",
+      color: "bg-indigo-500",
+    },
+    {
+      title: "Syllabus Extraídos",
+      description: "Ver y completar formularios de Syllabus extraídos",
+      icon: FileCheck,
+      href: "/dashboard/docente/syllabus-formularios",
+      color: "bg-violet-500",
+    },
+    {
+      title: "Programa Analítico (Legacy)",
+      description: "Sistema anterior de programas analíticos",
+      icon: FileText,
+      href: "/dashboard/docente/programa-analitico",
+      color: "bg-cyan-500",
     },
     {
       title: "Syllabus Docente",

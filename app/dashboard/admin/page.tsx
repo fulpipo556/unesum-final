@@ -10,7 +10,9 @@ import { Users, BookOpen, Activity, Calendar, FileSpreadsheet, Settings, Edit3, 
   ClipboardList,
   LucideAccessibility,
   LucideAirplay,
-  LucideArchive, } from "lucide-react"
+  LucideArchive,
+  Upload,
+  Sparkles } from "lucide-react"
 import Link from "next/link"
 
 export default function AdminDashboard() {
@@ -58,6 +60,13 @@ export default function AdminDashboard() {
       color: "bg-orange-500",
     },
     {
+      title: "🔥 Extraer Títulos Syllabus",
+      description: "Extrae automáticamente títulos de archivos Excel/Word",
+      icon: Sparkles,
+      href: "/dashboard/admin/syllabus/extraer-titulos",
+      color: "bg-purple-500",
+    },
+    {
       title: "Funciones Sustantivas",
       description: "Registrar y gestionar funciones sustantivas",
       icon: BookOpen,
@@ -88,10 +97,17 @@ export default function AdminDashboard() {
     },*/
     {
       title: "Programa Analítico",
+      description: "Gestionar programas analíticos y plantillas",
+      icon: ClipboardList,
+      href: "/dashboard/admin/programa-analitico",
+      color: "bg-cyan-500",
+    },
+    {
+      title: "Editor de Tablas",
       description: "Crear y editar programas analíticos con tablas",
       icon: Edit3,
       href: "/dashboard/admin/editor-tablas",
-      color: "bg-cyan-500",
+      color: "bg-green-500",
     },
     // --- 2. AÑADE EL NUEVO MÓDULO AQUÍ ---
     {
