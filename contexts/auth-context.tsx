@@ -181,10 +181,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       // La URL '/auth/login' ya es la correcta para nuestro backend unificado.
       const response = await axios.post(`${API_URL}/auth/login`, {
-        // --- ¡CAMBIO CRÍTICO AQUÍ! ---
-        // Cambia los nombres de las propiedades para que coincidan con el backend.
-        email: email,
-        password: password
+        // Los nombres deben coincidir con lo que espera el backend
+        correo_electronico: email,
+        contraseña: password
       })
       
       if (response.data.success) {
