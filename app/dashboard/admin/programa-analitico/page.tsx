@@ -5,10 +5,13 @@ import { ProtectedRoute } from "@/components/auth/protected-route"
 import { MainHeader } from "@/components/layout/main-header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, FileSpreadsheet, Plus, Loader2, Edit, Trash2, Eye } from "lucide-react"
+import { ArrowLeft, FileSpreadsheet, Plus, Loader2, Edit, Trash2, Eye, UserPlus, Sparkles, Eraser, Settings } from "lucide-react"
 import Link from "next/link"
 import { useAuth } from "@/contexts/auth-context"
 import { useRouter } from "next/navigation"
+import IAExtractorModal from "@/components/programa-analitico/ia-extractor-modal"
+import { ExtractorTitulosModal } from "@/components/programa-analitico/extractor-titulos-modal"
+import { SesionesExtraidasList } from "@/components/programa-analitico/sesiones-extraidas-list"
 
 interface ProgramaAnalitico {
   id: number
@@ -42,26 +45,41 @@ export default function AdminProgramaAnaliticoPage() {
   const fetchProgramas = async () => {
     try {
       setLoading(true)
+      setError(null)
       const currentToken = token || getToken()
+      
+      if (!currentToken) {
+        throw new Error('No se encontró token de autenticación')
+      }
       
       const response = await fetch('http://localhost:4000/api/programa-analitico', {
         headers: {
-          'Authorization': `Bearer ${currentToken}`
+          'Authorization': `Bearer ${currentToken}`,
+          'Content-Type': 'application/json'
         }
       })
 
+      if (!response.ok) {
+        if (response.status === 500) {
+          throw new Error('Error en el servidor. Por favor, verifica que el backend esté corriendo.')
+        }
+        throw new Error(`Error ${response.status}: ${response.statusText}`)
+      }
+
       const data = await response.json()
 
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.message || 'Error al obtener programas analíticos')
       }
 
       setProgramas(data.data || [])
+      setError(null)
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Error al cargar datos'
       setError(errorMessage)
-      console.error('Error:', err)
+      console.error('Error al obtener programas:', err)
+      setProgramas([])
     } finally {
       setLoading(false)
     }
@@ -93,6 +111,38 @@ export default function AdminProgramaAnaliticoPage() {
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Error al eliminar'
+      alert(`❌ ${errorMessage}`)
+      console.error('Error:', err)
+    }
+  }
+
+  const handleRelimpiar = async (id: number) => {
+    if (!confirm('¿Desea re-limpiar los datos de este programa? Esto eliminará duplicados.')) {
+      return
+    }
+
+    try {
+      const currentToken = token || getToken()
+      
+      const response = await fetch(`http://localhost:4000/api/programa-analitico/${id}/relimpiar`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${currentToken}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Error al re-limpiar')
+      }
+
+      alert(`✅ ${data.message}\nSecciones procesadas: ${data.data.secciones_procesadas}`)
+      fetchProgramas()
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al re-limpiar'
       alert(`❌ ${errorMessage}`)
       console.error('Error:', err)
     }
@@ -140,7 +190,7 @@ export default function AdminProgramaAnaliticoPage() {
           )}
 
           {/* Opciones disponibles */}
-          <div className="grid md:grid-cols-2 gap-6 mb-8">
+          <div className="grid md:grid-cols-4 gap-6 mb-8">
             {/* Crear Nuevo Programa Analítico */}
             <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-emerald-200">
               <CardHeader className="pb-3">
@@ -183,12 +233,88 @@ export default function AdminProgramaAnaliticoPage() {
                 <CardDescription className="mb-4">
                   Cargar un programa analítico desde un archivo Excel existente
                 </CardDescription>
+                <div className="space-y-2">
+                  <Button 
+                    onClick={() => router.push('/dashboard/admin/programa-analitico/subir')}
+                    className="w-full bg-blue-600 hover:bg-blue-700"
+                  >
+                    <FileSpreadsheet className="h-4 w-4 mr-2" />
+                    Subir Archivo
+                  </Button>
+                  <Button 
+                    onClick={() => router.push('/dashboard/admin/programa-analitico/lista')}
+                    variant="outline"
+                    className="w-full border-blue-300 text-blue-700 hover:bg-blue-50"
+                  >
+                    <Eye className="h-4 w-4 mr-2" />
+                    Ver Lista
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Extraer con IA */}
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-purple-200">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white">
+                    <Sparkles className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg">Extraer con IA</CardTitle>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="mb-4">
+                  Usa Google AI para extraer automáticamente datos de archivos Excel o Word
+                </CardDescription>
+                <IAExtractorModal />
+              </CardContent>
+            </Card>
+
+            {/* NUEVO: Extractor de Títulos */}
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-amber-200">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-amber-500 text-white">
+                    <FileSpreadsheet className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg">Extraer Títulos</CardTitle>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="mb-4">
+                  Visualiza qué títulos/secciones se detectan en tu archivo antes de subirlo
+                </CardDescription>
+                <ExtractorTitulosModal />
+              </CardContent>
+            </Card>
+
+            {/* NUEVO: Organizador de Pestañas */}
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-indigo-200">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-indigo-500 text-white">
+                    <Settings className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg">Organizar en Pestañas</CardTitle>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="mb-4">
+                  Organiza los títulos extraídos en diferentes pestañas para mejorar el formulario
+                </CardDescription>
                 <Button 
-                  onClick={() => router.push('/dashboard/admin/programa-analitico/lista')}
-                  className="w-full bg-blue-600 hover:bg-blue-700"
+                  onClick={() => router.push('/dashboard/admin/organizar-pestanas')}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700"
                 >
-                  <FileSpreadsheet className="h-4 w-4 mr-2" />
-                  Gestionar Excel
+                  <Settings className="h-4 w-4 mr-2" />
+                  Organizar Pestañas
                 </Button>
               </CardContent>
             </Card>
@@ -265,12 +391,31 @@ export default function AdminProgramaAnaliticoPage() {
                             Creado: {new Date(programa.createdAt).toLocaleDateString('es-ES')}
                           </p>
                         </div>
-                        <div className="flex gap-2 ml-4">
+                        <div className="flex flex-wrap gap-2 ml-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                            onClick={() => handleRelimpiar(programa.id)}
+                            title="Limpiar datos duplicados"
+                          >
+                            <Eraser className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-purple-600 border-purple-300 hover:bg-purple-50"
+                            onClick={() => router.push(`/dashboard/admin/programa-analitico/asignar/${programa.id}`)}
+                            title="Asignar a docente"
+                          >
+                            <UserPlus className="h-4 w-4" />
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
                             className="text-blue-600 border-blue-300 hover:bg-blue-50"
                             onClick={() => router.push(`/dashboard/admin/programa-analitico/ver/${programa.id}`)}
+                            title="Ver"
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
@@ -279,6 +424,7 @@ export default function AdminProgramaAnaliticoPage() {
                             size="sm"
                             className="text-emerald-600 border-emerald-300 hover:bg-emerald-50"
                             onClick={() => router.push(`/dashboard/admin/programa-analitico/editar/${programa.id}`)}
+                            title="Editar"
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
@@ -287,6 +433,7 @@ export default function AdminProgramaAnaliticoPage() {
                             size="sm"
                             className="text-red-600 border-red-300 hover:bg-red-50"
                             onClick={() => handleDelete(programa.id)}
+                            title="Eliminar"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -298,6 +445,11 @@ export default function AdminProgramaAnaliticoPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Lista de Sesiones de Extracción Guardadas */}
+          <div className="mt-8">
+            <SesionesExtraidasList />
+          </div>
         </main>
       </div>
     </ProtectedRoute>

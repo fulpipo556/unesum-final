@@ -90,9 +90,13 @@ export default function EditorTablasPage() {
 
   // --- COMUNICACIÓN CON EL BACKEND ---
   const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
-    const fullUrl = `${process.env.NEXT_PUBLIC_API_URL}${endpoint}`
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'
+    const fullUrl = `${API_URL}${endpoint}`
     const currentToken = token || getToken()
     const headers = { "Content-Type": "application/json", Authorization: `Bearer ${currentToken}`, ...options.headers }
+    
+    console.log('🔍 API Request:', { fullUrl, method: options.method || 'GET' })
+    
     const response = await fetch(fullUrl, { ...options, headers })
     const data = await response.json()
     if (!response.ok) throw new Error(data.message || "Error en la petición al API.")
@@ -130,6 +134,8 @@ export default function EditorTablasPage() {
       const isUpdate = typeof activeTable.id === 'number'
       const endpoint = isUpdate ? `/programas-analiticos/${activeTable.id}` : '/programas-analiticos'
       const method = isUpdate ? 'PUT' : 'POST'
+
+      console.log('💾 Guardando:', { endpoint, method, payload })
 
       const result = await apiRequest(endpoint, { method, body: JSON.stringify(payload) })
       const savedTableData = result.data.datos_tabla

@@ -147,6 +147,12 @@ export default function SyllabusManagementPage() {
                       <CardDescription>Visualiza y gestiona todos los syllabus del sistema</CardDescription>
                     </div>
                     <div className="flex gap-2">
+                      <Link href="/dashboard/admin/syllabus/extraer-titulos">
+                        <Button className="bg-purple-600 hover:bg-purple-700">
+                          <Upload className="h-4 w-4 mr-2" />
+                          Extraer Títulos de Syllabus
+                        </Button>
+                      </Link>
                       <Link href="/dashboard/admin/syllabus/subir-documento">
                         <Button variant="outline" className="border-[#00563F] text-[#00563F] hover:bg-[#00563F] hover:text-white">
                           <Upload className="h-4 w-4 mr-2" />

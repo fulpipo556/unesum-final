@@ -183,8 +183,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await axios.post(`${API_URL}/auth/login`, {
         // --- ¡CAMBIO CRÍTICO AQUÍ! ---
         // Cambia los nombres de las propiedades para que coincidan con el backend.
-        email: email,
-        password: password
+        correo_electronico: email,
+        contraseña: password
       })
       
       if (response.data.success) {
