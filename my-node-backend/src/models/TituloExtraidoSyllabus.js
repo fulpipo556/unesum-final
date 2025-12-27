@@ -25,6 +25,20 @@ module.exports = (sequelize) => {
       allowNull: false,
       comment: 'Tipo de archivo: xlsx, docx, doc'
     },
+    periodo_academico: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      comment: 'Periodo académico asociado (ej: 2025-1)'
+    },
+    periodo_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'periodos',
+        key: 'id'
+      },
+      comment: 'ID del periodo académico'
+    },
     usuario_id: {
       type: DataTypes.INTEGER,
       allowNull: true,
@@ -106,6 +120,10 @@ module.exports = (sequelize) => {
       {
         name: 'idx_titulos_syllabus_archivo',
         fields: ['nombre_archivo']
+      },
+      {
+        name: 'idx_titulos_syllabus_periodo',
+        fields: ['periodo_id']
       }
     ]
   });
@@ -117,6 +135,14 @@ module.exports = (sequelize) => {
       foreignKey: 'usuario_id',
       as: 'usuario'
     });
+    
+    // Relación con Periodo
+    if (models.Periodo) {
+      TituloExtraidoSyllabus.belongsTo(models.Periodo, {
+        foreignKey: 'periodo_id',
+        as: 'periodo'
+      });
+    }
   };
 
   return TituloExtraidoSyllabus;

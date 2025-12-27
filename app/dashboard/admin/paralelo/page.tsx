@@ -44,7 +44,6 @@ export default function FuncionesSustantivasPage() {
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [formData, setFormData] = useState({
-    codigo: "",
     nombre: "",
     estado: "activo" as "activo" | "inactivo",
   })
@@ -108,7 +107,6 @@ const apiRequest = async (url: string, options = {}) => {
   }, [token])
   const handleNew = () => {
     setFormData({
-      codigo: "",
       nombre: "",
       estado: "activo",
     });
@@ -118,10 +116,10 @@ const apiRequest = async (url: string, options = {}) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!formData.codigo || !formData.nombre) {
+    if (!formData.nombre) {
       toast({
         title: "Error",
-        description: "El código y nombre son campos obligatorios",
+        description: "El nombre es campo obligatorio",
         variant: "destructive",
       })
       return
@@ -180,49 +178,52 @@ const apiRequest = async (url: string, options = {}) => {
         description: error.message || "Error al guardar el paralelo",
         variant: "destructive",
       })
+      handleNew()
     } finally {
       setSubmitting(false)
     }
   }
   
   const handleDelete = async (id: string) => {
-    if (confirm("¿Estás seguro de que deseas eliminar este paralelo?")) {
-      try {
-        setLoading(true)
-        // CORREGIDO
-        const response = await apiRequest(
-          `/paralelos/${id}`, // Quitar process.env.NEXT_PUBLIC_API_URL
-          {
-            method: "DELETE",
-          }
-        )
-        
-        if (!response.ok) {
-          throw new Error("Error al eliminar el pararlelo")
+  if (confirm("¿Estás seguro de que deseas eliminar este paralelo?")) {
+    try {
+      setLoading(true)
+      const response = await apiRequest(
+        `/paralelos/${id}`,
+        {
+          method: "DELETE",
         }
-        
-        toast({
-          title: "Éxito",
-          description: "Paralelo eliminado correctamente",
-        })
-        
-        fetchFunciones()
-      } catch (error) {
-        console.error("Error:", error)
-        toast({
-          title: "Error",
-          description: "No se pudo eliminar el pararlelo",
-          variant: "destructive",
-        })
-      } finally {
-        setLoading(false)
+      )
+      
+      if (!response.ok) {
+        throw new Error("Error al eliminar el paralelo")
       }
+      
+      toast({
+        title: "Éxito",
+        description: "Paralelo eliminado correctamente",
+      })
+      
+      // Limpia siempre la caja de texto y el estado del formulario
+      handleNew()
+      
+      fetchFunciones()
+    } catch (error) {
+      console.error("Error:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo eliminar el paralelo",
+        variant: "destructive",
+      })
+      
+    } finally {
+      setLoading(false)
     }
   }
+}
   // Agregar esta función en tu componente
 const handleEdit = (funcion: Paralelo) => {
   setFormData({
-    codigo: funcion.codigo,
     nombre: funcion.nombre,
     estado: funcion.estado,
   });
@@ -283,17 +284,17 @@ const handleEdit = (funcion: Paralelo) => {
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div className="grid md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="codigo" className="text-sm font-medium">
-                        Código *
+                      <Label htmlFor="nombre" className="text-sm font-medium">
+                        Paralelo *
                       </Label>
                       <Input
-                        id="codigo"
-                        placeholder="Ingrese el código"
-                        value={formData.codigo}
-                        onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
+                        id="nombre"
+                        placeholder="Ingrese el Paralelo"
+                        value={formData.nombre}
+                        onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
                         required
                         className="border-gray-300"
-                        maxLength={10}
+                        maxLength={100}
                       />
                     </div>
 
@@ -314,21 +315,6 @@ const handleEdit = (funcion: Paralelo) => {
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="nombre" className="text-sm font-medium">
-                      Paralelo *
-                    </Label>
-                    <Input
-                      id="nombre"
-                      placeholder="Ingrese el Paralelo"
-                      value={formData.nombre}
-                      onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                      required
-                      className="border-gray-300"
-                      maxLength={100}
-                    />
                   </div>
 
                     <div className="flex gap-4 pt-4">

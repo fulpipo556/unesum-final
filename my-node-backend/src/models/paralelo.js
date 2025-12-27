@@ -10,7 +10,7 @@ module.exports = function(sequelize, DataTypes) {
     },
     codigo: {
       type: DataTypes.STRING(10),
-      allowNull: false,
+      allowNull: true,
       unique: "paralelo_codigo_key"
     },
     nombre: {

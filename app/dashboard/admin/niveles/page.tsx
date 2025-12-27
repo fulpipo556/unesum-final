@@ -118,10 +118,10 @@ const apiRequest = async (url: string, options = {}) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!formData.codigo || !formData.nombre) {
+    if (!formData.nombre) {
       toast({
         title: "Error",
-        description: "El código y nombre son campos obligatorios",
+        description: "El nombre es un campo obligatorio",
         variant: "destructive",
       })
       return
@@ -130,13 +130,19 @@ const apiRequest = async (url: string, options = {}) => {
     try {
       setSubmitting(true)
       
+      // Preparar datos sin el campo código (se genera automáticamente en el backend)
+      const dataToSend = {
+        nombre: formData.nombre,
+        estado: formData.estado
+      }
+      
       if (editingId) {
         // Actualizar función existente - CORREGIDO
         const response = await apiRequest(
           `/niveles/${editingId}`, // Quitar process.env.NEXT_PUBLIC_API_URL
           {
             method: "PUT",
-            body: JSON.stringify(formData),
+            body: JSON.stringify(dataToSend),
           }
         )
         
@@ -155,7 +161,7 @@ const apiRequest = async (url: string, options = {}) => {
           `/niveles`, // Quitar process.env.NEXT_PUBLIC_API_URL
           {
             method: "POST",
-            body: JSON.stringify(formData),
+            body: JSON.stringify(dataToSend),
           }
         )
         
@@ -222,7 +228,7 @@ const apiRequest = async (url: string, options = {}) => {
   // Agregar esta función en tu componente
 const handleEdit = (funcion: Nivel) => {
   setFormData({
-    codigo: funcion.codigo,
+    codigo: "",
     nombre: funcion.nombre,
     estado: funcion.estado,
   });
@@ -283,20 +289,19 @@ const handleEdit = (funcion: Nivel) => {
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div className="grid md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="codigo" className="text-sm font-medium">
-                        Código *
+                      <Label htmlFor="nombre" className="text-sm font-medium">
+                        Nivel *
                       </Label>
                       <Input
-                        id="codigo"
-                        placeholder="Ingrese el código"
-                        value={formData.codigo}
-                        onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
+                        id="nombre"
+                        placeholder="Ingrese el Nivel"
+                        value={formData.nombre}
+                        onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
                         required
                         className="border-gray-300"
-                        maxLength={10}
+                        maxLength={100}
                       />
                     </div>
-
                     <div className="space-y-2">
                       <Label htmlFor="estado" className="text-sm font-medium">
                         Opción
@@ -314,21 +319,8 @@ const handleEdit = (funcion: Nivel) => {
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="nombre" className="text-sm font-medium">
-                      Paralelo *
-                    </Label>
-                    <Input
-                      id="nombre"
-                      placeholder="Ingrese el Nivel"
-                      value={formData.nombre}
-                      onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                      required
-                      className="border-gray-300"
-                      maxLength={100}
-                    />
+                    
                   </div>
 
                     <div className="flex gap-4 pt-4">
@@ -379,10 +371,8 @@ const handleEdit = (funcion: Nivel) => {
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-gray-50">
-                          <TableHead className="font-semibold">N.</TableHead>
                           <TableHead className="font-semibold">Código</TableHead>
                           <TableHead className="font-semibold">Nivel</TableHead>
-                          
                           <TableHead className="font-semibold">Estado</TableHead>
                           <TableHead className="font-semibold">Acciones</TableHead>
                         </TableRow>
@@ -391,7 +381,6 @@ const handleEdit = (funcion: Nivel) => {
                         {funciones.map((funcion, index) => (
                           <TableRow key={funcion.id} className="hover:bg-gray-50">
                             <TableCell className="font-medium">{index + 1}</TableCell>
-                            <TableCell>{funcion.codigo}</TableCell>
                             <TableCell>{funcion.nombre}</TableCell>
                             
                             <TableCell>
@@ -445,7 +434,7 @@ const handleEdit = (funcion: Nivel) => {
                         ))}
                         {funciones.length === 0 && !loading && (
                           <TableRow>
-                            <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                            <TableCell colSpan={4} className="text-center py-8 text-gray-500">
                               No hay nivel registrados
                             </TableCell>
                           </TableRow>

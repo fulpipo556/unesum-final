@@ -26,7 +26,7 @@ module.exports = function(sequelize, DataTypes) {
       allowNull: true
     },
     estado: {
-      type: DataTypes.ENUM("activo","inactivo"),
+      type: DataTypes.STRING,
       allowNull: false,
       defaultValue: "activo"
     }

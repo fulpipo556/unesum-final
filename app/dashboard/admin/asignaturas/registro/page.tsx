@@ -224,7 +224,10 @@ export default function RegistroAsignaturaPage() {
   };
 
   const resetForm = () => {
-      // No reseteamos facultad, carrera ni nivel para mantener el contexto de la malla
+      // Restablecer TODOS los campos del formulario al estado inicial
+      setFacultad("");
+      setCarrera("");
+      setNivel("");
       setOrganizacion("");
       setCodigo("");
       setDescripcion("");
@@ -240,6 +243,15 @@ export default function RegistroAsignaturaPage() {
       setCurrentSection("basica");
       setEditingAsignaturaId(null);
       setNewAsignaturaId(null);
+      setCarrerasFiltradas([]);
+      setAsignaturasDelNivel([]);
+      setAsignaturasNivelAnterior([]);
+      setAsignaturasNivelActual([]);
+      
+      // Restablecer el modal de malla al estado inicial
+      setCodigoMallaActual("");
+      setMallaSeleccionada(false);
+      setShowMallaModal(true);
   };
 
   const isSectionCompleted = (section: Section) => completedSections.includes(section)
@@ -516,14 +528,23 @@ export default function RegistroAsignaturaPage() {
                       </Select>
                     </div>
                   </div>
-                  <Button
-                    onClick={() => handleSaveSection("basica")}
-                    className="bg-[#00563F] hover:bg-[#00563F]/90"
-                    disabled={!facultad || !carrera || !nivel || isSaving}
-                  >
-                    {isSaving && currentSection === 'basica' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Continuar con Datos de Asignatura
-                  </Button>
+                  <div className="flex gap-3">
+                    <Button
+                      onClick={() => handleSaveSection("basica")}
+                      className="bg-[#00563F] hover:bg-[#00563F]/90"
+                      disabled={!facultad || !carrera || !nivel || isSaving}
+                    >
+                      {isSaving && currentSection === 'basica' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Continuar con Datos de Asignatura
+                    </Button>
+                    <Button
+                      onClick={resetForm}
+                      variant="outline"
+                      disabled={isSaving}
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
                 </div>
               )
             ) : (
@@ -607,10 +628,19 @@ export default function RegistroAsignaturaPage() {
                   </div>
                 </div>
               
-                <Button onClick={() => handleSaveSection("asignatura")} className="bg-[#00563F] hover:bg-[#00563F]/90" disabled={!organizacion || !codigo || !descripcion || isSaving}>
-                  {isSaving && currentSection === 'asignatura' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Continuar con la Distribución de Horas
-                </Button>
+                <div className="flex gap-3">
+                  <Button onClick={() => handleSaveSection("asignatura")} className="bg-[#00563F] hover:bg-[#00563F]/90" disabled={!organizacion || !codigo || !descripcion || isSaving}>
+                    {isSaving && currentSection === 'asignatura' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Continuar con la Distribución de Horas
+                  </Button>
+                  <Button
+                    onClick={resetForm}
+                    variant="outline"
+                    disabled={isSaving}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
               </div>
             ) : ( <p className="text-muted-foreground">Complete la sección anterior para desbloquear</p> )}
           </CardContent>

@@ -80,6 +80,13 @@ export function OrganizadorPestanas({
   const [error, setError] = useState<string | null>(null);
   const [exito, setExito] = useState<string | null>(null);
   const [vistaPrevia, setVistaPrevia] = useState(false);
+  const [nuevoTituloTexto, setNuevoTituloTexto] = useState('');
+
+  // Filtrar nombres de personas (títulos que empiezan con Ing., Lic., Mg., Dr., etc.)
+  const esNombrePersona = (texto: string): boolean => {
+    const patronesNombres = /^(Ing\.|Lic\.|Mg\.|Dr\.|Dra\.|MSc\.|PhD\.|Prof\.|Profesor|Profesora|MSIG|Mgs\.|Mgtr\.)/i;
+    return patronesNombres.test(texto.trim());
+  };
 
   useEffect(() => {
     cargarAgrupaciones();
@@ -150,7 +157,9 @@ export function OrganizadorPestanas({
 
   const actualizarTitulosSinAsignar = (pestanasActuales: Pestana[]) => {
     const idsAsignados = pestanasActuales.flatMap(p => p.titulo_ids);
-    const sinAsignar = titulos.filter(t => !idsAsignados.includes(t.id));
+    const sinAsignar = titulos.filter(t => 
+      !idsAsignados.includes(t.id) && !esNombrePersona(t.titulo)
+    );
     setTitulosSinAsignar(sinAsignar);
   };
 
@@ -197,6 +206,31 @@ export function OrganizadorPestanas({
       setPestanas(nuevasPestanas);
       actualizarTitulosSinAsignar(nuevasPestanas);
     }
+  };
+
+  const agregarTituloPersonalizado = () => {
+    if (!nuevoTituloTexto.trim()) {
+      setError('Ingresa un texto para el nuevo título');
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+
+    // Crear un nuevo título temporal con ID negativo para distinguirlo
+    const nuevoId = -(titulos.length + titulosSinAsignar.length + 1);
+    const nuevoTitulo: Titulo = {
+      id: nuevoId,
+      titulo: nuevoTituloTexto.trim(),
+      tipo: 'personalizado',
+      fila: 0,
+      columna_letra: 'N/A'
+    };
+
+    // Agregar al array de títulos y títulos sin asignar
+    titulos.push(nuevoTitulo);
+    setTitulosSinAsignar([...titulosSinAsignar, nuevoTitulo]);
+    setNuevoTituloTexto('');
+    setExito(`✅ Título "${nuevoTitulo.titulo}" agregado`);
+    setTimeout(() => setExito(null), 3000);
   };
 
   const quitarTituloDePestana = (pestanaIndex: number, tituloId: number) => {
@@ -300,6 +334,36 @@ export function OrganizadorPestanas({
         </Alert>
       )}
 
+      {/* Agregar título personalizado */}
+      <Card className="border-2 border-green-300 bg-green-50">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            ✨ Crear Título Personalizado
+          </CardTitle>
+          <CardDescription>
+            Agrega nuevos títulos que no están en el documento original
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2">
+            <Input
+              value={nuevoTituloTexto}
+              onChange={(e) => setNuevoTituloTexto(e.target.value)}
+              placeholder="Ej: Recursos adicionales, Notas importantes..."
+              onKeyPress={(e) => e.key === 'Enter' && agregarTituloPersonalizado()}
+              className="flex-1"
+            />
+            <Button 
+              onClick={agregarTituloPersonalizado}
+              disabled={!nuevoTituloTexto.trim()}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Agregar
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Títulos sin asignar */}
       <Card className="border-dashed border-2 border-yellow-300 bg-yellow-50">
         <CardHeader>
@@ -321,11 +385,14 @@ export function OrganizadorPestanas({
                 <Badge 
                   key={titulo.id}
                   variant="secondary"
-                  className="cursor-pointer hover:bg-yellow-200 p-2 transition-colors"
-                  title={`Fila ${titulo.fila}, Columna ${titulo.columna_letra}`}
+                  className={`cursor-pointer hover:bg-yellow-200 p-2 transition-colors ${
+                    titulo.tipo === 'personalizado' ? 'bg-green-100 border-green-300' : ''
+                  }`}
+                  title={titulo.tipo === 'personalizado' ? 'Título personalizado' : `Fila ${titulo.fila}, Columna ${titulo.columna_letra}`}
                 >
                   <span className="mr-2">
-                    {titulo.tipo === 'cabecera' ? '📋' : 
+                    {titulo.tipo === 'personalizado' ? '✨' :
+                     titulo.tipo === 'cabecera' ? '📋' : 
                      titulo.tipo === 'titulo_seccion' ? '📑' : '📝'}
                   </span>
                   {titulo.titulo}
@@ -461,10 +528,15 @@ export function OrganizadorPestanas({
                       return titulo ? (
                         <Badge 
                           key={tituloId}
-                          className="p-2 cursor-pointer hover:bg-red-100 transition-colors"
+                          className={`p-2 cursor-pointer hover:bg-red-100 transition-colors ${
+                            titulo.tipo === 'personalizado' ? 'bg-green-50 border-green-300' : ''
+                          }`}
                           onClick={() => quitarTituloDePestana(index, tituloId)}
                           title="Clic para quitar"
                         >
+                          <span className="mr-2">
+                            {titulo.tipo === 'personalizado' ? '✨' : '📝'}
+                          </span>
                           {titulo.titulo} <span className="ml-2">✕</span>
                         </Badge>
                       ) : null;

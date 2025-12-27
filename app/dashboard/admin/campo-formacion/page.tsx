@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Trash2, Edit, Save } from "lucide-react"
+import { Loader2, Trash2, Edit, Save, Plus } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/contexts/auth-context"
 
@@ -125,6 +125,13 @@ export default function RegistroClasificacionPage() {
         setEditingId(null);
     }, []);
 
+    const handleNuevo = () => {
+        setFacultad("");
+        resetForm();
+        setRegistros([]);
+        toast({ title: "Formulario Limpio", description: "Puede crear un nuevo registro." });
+    };
+
     const handleFacultadChange = (newFacultadId: string) => {
         setFacultad(newFacultadId);
         resetForm();
@@ -148,9 +155,16 @@ export default function RegistroClasificacionPage() {
             const response = await apiRequest(endpoint, { method, body: JSON.stringify(payload) });
             if (response && response.success) {
                 toast({ title: "Éxito", description: `Registro ${editingId ? 'actualizado' : 'guardado'} correctamente.` });
-                await cargarRegistrosPorFacultad();
-                resetForm();
             }
+            // Limpiar todo después de guardar (exitoso o con error)
+            setFacultad("");
+            resetForm();
+            setRegistros([]);
+        } catch (error) {
+            // En caso de excepción, también limpiar todo
+            setFacultad("");
+            resetForm();
+            setRegistros([]);
         } finally {
             setIsSaving(false);
         }
@@ -175,7 +189,10 @@ export default function RegistroClasificacionPage() {
             const res = await apiRequest(`/clasifica/${id}`, { method: 'DELETE' });
             if (res) {
                 toast({ title: "Eliminado", description: res.message });
-                await cargarRegistrosPorFacultad();
+                // Resetear todo el formulario incluyendo la facultad
+                setFacultad("");
+                resetForm();
+                setRegistros([]);
             }
         }
     };
@@ -238,10 +255,16 @@ export default function RegistroClasificacionPage() {
                             <Input value={campoDetallado} onChange={e => setCampoDetallado(e.target.value)} placeholder="Ej: Educación primaria" />
                         </div>
                     </div>
-                    <Button onClick={handleSave} disabled={isSaving || !carrera} className="w-full bg-[#00563F] hover:bg-[#00563F]/90 text-lg h-12">
-                        {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2" />}
-                        {editingId ? "Actualizar Registro" : "Guardar Registro"}
-                    </Button>
+                    <div className="flex gap-3">
+                        <Button onClick={handleSave} disabled={isSaving || !carrera} className="flex-1 bg-[#00563F] hover:bg-[#00563F]/90 text-lg h-12">
+                            {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2" />}
+                            {editingId ? "Actualizar Registro" : "Guardar Registro"}
+                        </Button>
+                        <Button onClick={handleNuevo} variant="outline" className="flex-1 text-lg h-12 border-[#00563F] text-[#00563F] hover:bg-[#00563F]/10">
+                            <Plus className="mr-2" />
+                            Nuevo
+                        </Button>
+                    </div>
                 </CardContent>
             </Card>
 

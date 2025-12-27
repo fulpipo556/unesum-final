@@ -55,28 +55,41 @@ exports.getById = async (req, res) => {
 // Crear una nuevo paralelo
 exports.create = async (req, res) => {
   try {
-    const { codigo, nombre, estado } = req.body;
+    const { nombre, estado } = req.body;
     
     // Validaciones básicas
-    if (!codigo || !nombre) {
+    if (!nombre) {
       return res.status(400).json({
         success: false,
-        message: 'El código y nombre son campos obligatorios'
+        message: 'El nombre del paralelo es obligatorio'
       });
     }
     
-    // Verificar si ya existe un paralelo con el mismo código
-    const existente = await Paralelo.findOne({ where: { codigo } });
+    // Verificar si ya existe un paralelo con el mismo nombre
+    const existente = await Paralelo.findOne({ where: { nombre } });
     if (existente) {
       return res.status(400).json({
         success: false,
-        message: `Ya existe un paralelo con el código ${codigo}`
+        message: `Ya existe un paralelo con el nombre ${nombre}`
       });
     }
     
-    // Crear la nueva función
+    // Generar código automático
+    const ultimoParalelo = await Paralelo.findOne({
+      order: [['id', 'DESC']]
+    });
+    
+    let nuevoCodigo = 'PAR-001';
+    if (ultimoParalelo && ultimoParalelo.codigo) {
+      // Extraer el número del último código y sumar 1
+      const ultimoNumero = parseInt(ultimoParalelo.codigo.split('-')[1]);
+      const nuevoNumero = ultimoNumero + 1;
+      nuevoCodigo = `PAR-${String(nuevoNumero).padStart(3, '0')}`;
+    }
+    
+    // Crear el nuevo paralelo
     const nuevoParalelo = await Paralelo.create({
-      codigo,
+      codigo: nuevoCodigo,
       nombre,
       estado: estado || 'activo'
     });
@@ -100,32 +113,31 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { codigo, nombre, estado } = req.body;
+    const { nombre, estado } = req.body;
     
-    // Buscar la función a actualizar
+    // Buscar el paralelo a actualizar
     const paralelo = await Paralelo.findByPk(id);
     
     if (!paralelo) {
       return res.status(404).json({
         success: false,
-        message: `Paralelo con ID ${id} no encontrada`
+        message: `Paralelo con ID ${id} no encontrado`
       });
     }
     
-    // Si se cambia el código, verificar que no exista otro con ese código
-    if (codigo && codigo !== paralelo.codigo) {
-      const existente = await Paralelo.findOne({ where: { codigo } });
-      if (existente) {
+    // Verificar si el nombre ya existe en otro paralelo
+    if (nombre && nombre !== paralelo.nombre) {
+      const existente = await Paralelo.findOne({ where: { nombre } });
+      if (existente && existente.id !== parseInt(id)) {
         return res.status(400).json({
           success: false,
-          message: `Ya existe otro Paralelo con el código ${codigo}`
+          message: `Ya existe otro paralelo con el nombre ${nombre}`
         });
       }
     }
     
-    // Actualizar los campos
+    // Actualizar los campos (el código no se puede cambiar)
     await paralelo.update({
-      codigo: codigo || paralelo.codigo,
       nombre: nombre || paralelo.nombre,
       estado: estado || paralelo.estado
     });

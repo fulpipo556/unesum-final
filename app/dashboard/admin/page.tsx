@@ -52,19 +52,19 @@ export default function AdminDashboard() {
       href: "/dashboard/admin/campo-formacion",
       color: "bg-purple-500",
     },
-    {
+    /*{
       title: "Syllabus de Asignaturas",
       description: "Crear, editar y gestionar syllabus de asignaturas",
       icon: FileText,
       href: "/dashboard/admin/syllabus",
       color: "bg-orange-500",
-    },
-    {
-      title: "🔥 Extraer Títulos Syllabus",
-      description: "Extrae automáticamente títulos de archivos Excel/Word",
+    },*/  
+     {
+      title: "Syllabus",
+      description: "Gestionar Syllabus",
       icon: Sparkles,
       href: "/dashboard/admin/syllabus/extraer-titulos",
-      color: "bg-purple-500",
+      color: "bg-orange-500",
     },
     {
       title: "Funciones Sustantivas",
@@ -97,26 +97,20 @@ export default function AdminDashboard() {
     },*/
     {
       title: "Programa Analítico",
-      description: "Gestionar programas analíticos y plantillas",
+      description: "Gestionar Programa Analíticos",
       icon: ClipboardList,
       href: "/dashboard/admin/programa-analitico",
       color: "bg-cyan-500",
     },
-    {
-      title: "Editor de Tablas",
-      description: "Crear y editar programas analíticos con tablas",
-      icon: Edit3,
-      href: "/dashboard/admin/editor-tablas",
-      color: "bg-green-500",
-    },
+   
     // --- 2. AÑADE EL NUEVO MÓDULO AQUÍ ---
-    {
+   /* {
       title: "Configuración del Syllabus",
       description: "Cargar y editar syllabus desde documentos Word",
       icon: FileText,
       href: "/dashboard/admin/editor-syllabus",
       color: "bg-purple-500",
-    },
+    },*
     /*{
       title: "Configuración",
       description: "Configuración general del sistema",
@@ -129,35 +123,35 @@ export default function AdminDashboard() {
       description: "Ingresa facultades y carreras académicas",
       icon: Library,
       href: "/dashboard/admin/gestion-academica",
-      color: "bg-orange-500",
+      color: "bg-purple-500",
     },
      {
       title: "Niveles",
       description: "Ingresa Niveles",
       icon: LucideAlarmClock,
       href: "/dashboard/admin/niveles",
-      color: "bg-cyan-500",
+      color: "bg-orange-500",
     },
     {
       title: "Asignaturas - Malla Curricular",
       description: "Registro de asignaturas para la malla curricular",
       icon: GraduationCap,
       href: "/dashboard/admin/asignaturas/registro",
-      color: "bg-purple-500",
+      color: "bg-cyan-500",
     },
     {
       title: "Malla Curricular",
       description: "Visualiza la malla curricular",
       icon: Grid3x3,
       href: "/dashboard/admin/malla-curricular",
-      color: "bg-orange-500",
+      color: "bg-purple-500",
     },
     {
       title: "Planificación Académica",
       description: "Gestionar planificación Académica ",
       icon: ClipboardList,
       href: "/dashboard/admin/planificacion-academica",
-      color: "bg-cyan-500",
+      color: "bg-orange-500",
     },
   ]
 

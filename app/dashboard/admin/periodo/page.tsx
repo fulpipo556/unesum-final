@@ -23,6 +23,7 @@ function useToast() {
       // Log to console
       if (variant === "destructive") {
         console.error(`${title}: ${description}`);
+
       } else {
         console.log(`${title}: ${description}`);
       }
@@ -31,7 +32,9 @@ function useToast() {
       alert(variant === "destructive" ? 
         `Error: ${description}` : 
         `${title}: ${description}`);
+        
     }
+    
   };
 }
 
@@ -44,7 +47,6 @@ export default function FuncionesSustantivasPage() {
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [formData, setFormData] = useState({
-    codigo: "",
     nombre: "",
     estado: "activo" as "activo" | "inactivo",
   })
@@ -108,7 +110,6 @@ const apiRequest = async (url: string, options = {}) => {
   }, [token])
   const handleNew = () => {
     setFormData({
-      codigo: "",
       nombre: "",
       estado: "activo",
     });
@@ -118,10 +119,10 @@ const apiRequest = async (url: string, options = {}) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!formData.codigo || !formData.nombre) {
+    if (!formData.nombre) {
       toast({
         title: "Error",
-        description: "El código y periodo son campos obligatorios",
+        description: "El nombre del periodo es obligatorio",
         variant: "destructive",
       })
       return
@@ -180,6 +181,7 @@ const apiRequest = async (url: string, options = {}) => {
         description: error.message || "Error al guardar el periodo",
         variant: "destructive",
       })
+      handleNew()
     } finally {
       setSubmitting(false)
     }
@@ -205,7 +207,7 @@ const apiRequest = async (url: string, options = {}) => {
           title: "Éxito",
           description: "Periodo eliminado correctamente",
         })
-        
+        handleNew()
         fetchFunciones()
       } catch (error) {
         console.error("Error:", error)
@@ -222,7 +224,6 @@ const apiRequest = async (url: string, options = {}) => {
   // Agregar esta función en tu componente
 const handleEdit = (funcion: Periodo) => {
   setFormData({
-    codigo: funcion.codigo,
     nombre: funcion.nombre,
     estado: funcion.estado,
   });
@@ -283,23 +284,23 @@ const handleEdit = (funcion: Periodo) => {
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div className="grid md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="codigo" className="text-sm font-medium">
-                        Código *
+                      <Label htmlFor="nombre" className="text-sm font-medium">
+                        Nombre del Periodo *
                       </Label>
                       <Input
-                        id="codigo"
-                        placeholder="Ingrese el código"
-                        value={formData.codigo}
-                        onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
+                        id="nombre"
+                        placeholder="Ingrese el nombre del periodo (ej: 2024-2025 S1)"
+                        value={formData.nombre}
+                        onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
                         required
                         className="border-gray-300"
-                        maxLength={10}
+                        maxLength={100}
                       />
                     </div>
 
                     <div className="space-y-2">
                       <Label htmlFor="estado" className="text-sm font-medium">
-                        Opción
+                        Estado
                       </Label>
                       <Select
                         value={formData.estado}
@@ -314,21 +315,6 @@ const handleEdit = (funcion: Periodo) => {
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="nombre" className="text-sm font-medium">
-                      Paralelo *
-                    </Label>
-                    <Input
-                      id="nombre"
-                      placeholder="Ingrese el Periodo"
-                      value={formData.nombre}
-                      onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                      required
-                      className="border-gray-300"
-                      maxLength={100}
-                    />
                   </div>
 
                     <div className="flex gap-4 pt-4">
@@ -381,8 +367,7 @@ const handleEdit = (funcion: Periodo) => {
                         <TableRow className="bg-gray-50">
                           <TableHead className="font-semibold">N.</TableHead>
                           <TableHead className="font-semibold">Código</TableHead>
-                          <TableHead className="font-semibold">Periodo</TableHead>
-                          
+                          <TableHead className="font-semibold">Nombre del Periodo</TableHead>
                           <TableHead className="font-semibold">Estado</TableHead>
                           <TableHead className="font-semibold">Acciones</TableHead>
                         </TableRow>
@@ -391,7 +376,7 @@ const handleEdit = (funcion: Periodo) => {
                         {funciones.map((funcion, index) => (
                           <TableRow key={funcion.id} className="hover:bg-gray-50">
                             <TableCell className="font-medium">{index + 1}</TableCell>
-                            <TableCell>{funcion.codigo}</TableCell>
+                            <TableCell className="text-gray-500 font-mono text-sm">{funcion.codigo || 'N/A'}</TableCell>
                             <TableCell>{funcion.nombre}</TableCell>
                             
                             <TableCell>

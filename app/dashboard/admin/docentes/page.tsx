@@ -78,18 +78,27 @@ export default function GestionDocentesPage() {
   const [niveles, setNiveles] = useState<Nivel[]>([])
   const [asignaturas, setAsignaturas] = useState<Asignatura[]>([])
   const [paralelos, setParalelos] = useState<Paralelo[]>([])
+  const [periodos, setPeriodos] = useState<any[]>([])
+  const [mallas, setMallas] = useState<any[]>([])
+  
+  // --- Estados de Filtros ---
+  const [filtros, setFiltros] = useState({
+    periodo: "",
+    facultad: "",
+    carrera: "",
+    malla: ""
+  })
   
   const [editingId, setEditingId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
-  const [selectedFile, setSelectedFile] = useState<File | null>(null); // <-- AÑADE ESTO
-  const [uploading, setUploading] = useState(false); // <-- AÑADE ESTO
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [mounted, setMounted] = useState(false)
   const [formData, setFormData] = useState({
     nombres: "",
     apellidos: "",
     email: "",
-    facultad: "", // Almacenará el ID de la facultad
-    carrera: "",  // Almacenará el ID de la carrera
     asignatura: "", // Almacenará el ID de la asignatura
     nivel: "", // Almacenará el ID del nivel
     paralelo: "", // Almacenará el ID del paralelo
@@ -156,31 +165,56 @@ export default function GestionDocentesPage() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [profesoresRes, facultadesRes, carrerasRes, nivelesRes, asignaturasRes, paralelosRes] = await Promise.all([
+      const [profesoresRes, facultadesRes, carrerasRes, nivelesRes, asignaturasRes, paralelosRes, periodosRes, mallasRes] = await Promise.all([
         apiRequest('/profesores'),
         apiRequest('/datos-academicos/facultades'),
         apiRequest('/datos-academicos/carreras'),
         apiRequest('/datos-academicos/niveles'),
         apiRequest('/datos-academicos/asignaturas'),
-        apiRequest('/datos-academicos/paralelos')
+        apiRequest('/datos-academicos/paralelos'),
+        apiRequest('/periodo'),
+        apiRequest('/mallas')
       ]);
 
       if (!profesoresRes.ok || !facultadesRes.ok || !carrerasRes.ok || !nivelesRes.ok || !asignaturasRes.ok || !paralelosRes.ok) {
         throw new Error("Error al cargar los datos iniciales.");
       }
 
-      const [profesoresData, facultadesData, carrerasData, nivelesData, asignaturasData, paralelosData] = await Promise.all([
-        profesoresRes.json(), facultadesRes.json(), carrerasRes.json(), nivelesRes.json(), asignaturasRes.json(), paralelosRes.json()
+      const [profesoresData, facultadesData, carrerasData, nivelesData, asignaturasData, paralelosData, periodosData, mallasData] = await Promise.all([
+        profesoresRes.json(), facultadesRes.json(), carrerasRes.json(), nivelesRes.json(), asignaturasRes.json(), paralelosRes.json(), periodosRes.json(), mallasRes.json()
       ]);
 
-      setProfesores(profesoresData.data || []);
-      setFacultades(facultadesData.data || []);
-      setCarreras(carrerasData.data || []);
-      setNiveles(nivelesData.data || []);
-      setAsignaturas(asignaturasData.data || []);
-      setParalelos(paralelosData.data || []);
+      const profesoresArray = Array.isArray(profesoresData?.data) ? profesoresData.data : (Array.isArray(profesoresData) ? profesoresData : []);
+      const facultadesArray = Array.isArray(facultadesData?.data) ? facultadesData.data : (Array.isArray(facultadesData) ? facultadesData : []);
+      const carrerasArray = Array.isArray(carrerasData?.data) ? carrerasData.data : (Array.isArray(carrerasData) ? carrerasData : []);
+      const nivelesArray = Array.isArray(nivelesData?.data) ? nivelesData.data : (Array.isArray(nivelesData) ? nivelesData : []);
+      const asignaturasArray = Array.isArray(asignaturasData?.data) ? asignaturasData.data : (Array.isArray(asignaturasData) ? asignaturasData : []);
+      const paralelosArray = Array.isArray(paralelosData?.data) ? paralelosData.data : (Array.isArray(paralelosData) ? paralelosData : []);
+      const periodosArray = Array.isArray(periodosData?.data) ? periodosData.data : (Array.isArray(periodosData) ? periodosData : []);
+      const mallasArray = Array.isArray(mallasData?.data) ? mallasData.data : (Array.isArray(mallasData) ? mallasData : []);
+
+      setProfesores(profesoresArray);
+      setFacultades(facultadesArray);
+      setCarreras(carrerasArray);
+      setNiveles(nivelesArray);
+      setAsignaturas(asignaturasArray);
+      setParalelos(paralelosArray);
+      setPeriodos(periodosArray);
+      setMallas(mallasArray);
+
+      console.log('✅ Datos cargados:', {
+        profesores: profesoresArray.length,
+        facultades: facultadesArray.length,
+        carreras: carrerasArray.length,
+        niveles: nivelesArray.length,
+        asignaturas: asignaturasArray.length,
+        paralelos: paralelosArray.length,
+        periodos: periodosArray.length,
+        mallas: mallasArray.length
+      });
 
     } catch (error: any) {
+      console.error('❌ Error al cargar datos:', error);
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } finally {
       setLoading(false);
@@ -188,58 +222,74 @@ export default function GestionDocentesPage() {
   };
 
   useEffect(() => {
-    if (token) fetchData();
-  }, [token]);
+    setMounted(true);
+  }, []);
 
-  const carrerasFiltradas = useMemo(() => {
-    if (!formData.facultad) return [];
-    return carreras.filter(c => c.facultad_id === parseInt(formData.facultad, 10));
-  }, [formData.facultad, carreras]);
+  useEffect(() => {
+    if (token && mounted) fetchData();
+  }, [token, mounted]);
 
   const asignaturasFiltradas = useMemo(() => {
-    if (!formData.carrera) return [];
-    return asignaturas.filter(a => a.carrera_id === parseInt(formData.carrera, 10));
-  }, [formData.carrera, asignaturas]);
+    if (!filtros.malla || filtros.malla === "todas") return asignaturas;
+    const mallaSeleccionada = mallas.find(m => m.id === parseInt(filtros.malla, 10));
+    if (!mallaSeleccionada) return asignaturas;
+    return asignaturas.filter(a => a.carrera_id === mallaSeleccionada.carrera_id);
+  }, [filtros.malla, asignaturas, mallas]);
+
+  const carrerasFiltradasPorFiltro = useMemo(() => {
+    if (!filtros.facultad) return [];
+    return carreras.filter(c => c.facultad_id === parseInt(filtros.facultad, 10));
+  }, [filtros.facultad, carreras]);
+
+  const mallasFiltradasPorCarrera = useMemo(() => {
+    if (!filtros.carrera) return [];
+    return mallas.filter(m => m.carrera_id === parseInt(filtros.carrera, 10));
+  }, [filtros.carrera, mallas]);
+
+  const profesoresFiltrados = useMemo(() => {
+    return profesores.filter(profesor => {
+      let cumpleFiltros = true;
+      
+      if (filtros.facultad) {
+        cumpleFiltros = cumpleFiltros && profesor.carrera?.facultad?.id === parseInt(filtros.facultad, 10);
+      }
+      
+      if (filtros.carrera) {
+        cumpleFiltros = cumpleFiltros && profesor.carrera_id === parseInt(filtros.carrera, 10);
+      }
+      
+      // Para filtrar por malla, necesitarías agregar malla_id a la tabla de profesores
+      // Si no existe esa relación, puedes omitir este filtro o agregarlo según tu estructura
+      
+      return cumpleFiltros;
+    });
+  }, [profesores, filtros]);
   
   // --- Manejadores de Eventos ---
-  const handleSelectChange = (name: 'facultad' | 'carrera' | 'asignatura' | 'nivel' | 'paralelo', value: string) => {
-    setFormData(prev => {
-      const newState = { ...prev, [name]: value };
-      // Si el campo que cambia es la facultad, reseteamos la carrera y asignatura
-      if (name === 'facultad') {
-        newState.carrera = "";
-        newState.asignatura = "";
-      }
-      // Si el campo que cambia es la carrera, reseteamos la asignatura
-      if (name === 'carrera') {
-        newState.asignatura = "";
-      }
-      return newState;
-    });
+  const handleSelectChange = (name: 'asignatura' | 'nivel' | 'paralelo', value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
   const handleNew = () => {
-    setFormData({ nombres: "", apellidos: "", email: "", facultad: "", carrera: "", asignatura: "", nivel: "", paralelo: "", activo: true });
+    setFormData({ nombres: "", apellidos: "", email: "", asignatura: "", nivel: "", paralelo: "", activo: true });
     setEditingId(null);
   };
 
   const handleEdit = (profesor: Profesor) => {
-    // Para encontrar la facultad, necesitamos la carrera
-    const carreraDelProfesor = carreras.find(c => c.id === profesor.carrera_id);
-    
     setEditingId(profesor.id);
     setFormData({
       nombres: profesor.nombres,
       apellidos: profesor.apellidos,
       email: profesor.email,
-      facultad: carreraDelProfesor ? carreraDelProfesor.facultad_id.toString() : "",
-      carrera: profesor.carrera_id.toString(),
       asignatura: profesor.asignatura_id ? profesor.asignatura_id.toString() : "",
       nivel: profesor.nivel_id ? profesor.nivel_id.toString() : "",
       paralelo: profesor.paralelo_id ? profesor.paralelo_id.toString() : "",
       activo: profesor.activo,
     });
-    window.scrollTo({ top: 0, behavior: "smooth" }); // Sube al formulario para editar
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleDelete = async (id: number) => {
@@ -262,12 +312,15 @@ export default function GestionDocentesPage() {
     e.preventDefault();
     setSubmitting(true);
     
+    // Obtener carrera_id de la asignatura seleccionada
+    const asignaturaSeleccionada = asignaturas.find(a => a.id === parseInt(formData.asignatura, 10));
+    
     const payload = {
       nombres: formData.nombres,
       apellidos: formData.apellidos,
       email: formData.email,
       activo: formData.activo,
-      carrera: parseInt(formData.carrera, 10),
+      carrera: asignaturaSeleccionada ? asignaturaSeleccionada.carrera_id : null,
       asignatura_id: formData.asignatura ? parseInt(formData.asignatura, 10) : null,
       nivel_id: formData.nivel ? parseInt(formData.nivel, 10) : null,
       paralelo_id: formData.paralelo ? parseInt(formData.paralelo, 10) : null
@@ -301,6 +354,11 @@ export default function GestionDocentesPage() {
 
   return (
     <ProtectedRoute allowedRoles={["administrador"]}>
+      {!mounted ? (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+        </div>
+      ) : (
       <div className="min-h-screen bg-gray-50">
         <MainHeader />
         <main className="max-w-7xl mx-auto px-6 py-8">
@@ -308,6 +366,108 @@ export default function GestionDocentesPage() {
             <h1 className="text-2xl font-bold">GESTIÓN DE DOCENTES</h1>
           </div>
           <div className="bg-white rounded-b-lg shadow-lg p-6">
+            {/* Sección de Filtros */}
+            <Card className="mb-8 border-2 border-emerald-500">
+              <CardHeader className="bg-emerald-50">
+                <CardTitle className="text-emerald-900">Filtros de Búsqueda</CardTitle>
+                <CardDescription>Seleccione los criterios para filtrar los docentes en la tabla</CardDescription>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="filtro-periodo">Periodo Académico</Label>
+                    <Select 
+                      value={filtros.periodo} 
+                      onValueChange={(v) => setFiltros(prev => ({ ...prev, periodo: v }))}
+                    >
+                      <SelectTrigger id="filtro-periodo">
+                        <SelectValue placeholder="Todos los periodos" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Todos los periodos</SelectItem>
+                        {periodos.map((p) => (
+                          <SelectItem key={p.id} value={p.id.toString()}>
+                            {p.nombre}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label htmlFor="filtro-facultad">Facultad</Label>
+                    <Select 
+                      value={filtros.facultad} 
+                      onValueChange={(v) => setFiltros(prev => ({ ...prev, facultad: v, carrera: "", malla: "" }))}
+                    >
+                      <SelectTrigger id="filtro-facultad">
+                        <SelectValue placeholder="Todas las facultades" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todas">Todas las facultades</SelectItem>
+                        {facultades.map((f) => (
+                          <SelectItem key={f.id} value={f.id.toString()}>
+                            {f.nombre}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label htmlFor="filtro-carrera">Carrera</Label>
+                    <Select 
+                      value={filtros.carrera} 
+                      onValueChange={(v) => setFiltros(prev => ({ ...prev, carrera: v, malla: "" }))}
+                      disabled={!filtros.facultad || filtros.facultad === "todas"}
+                    >
+                      <SelectTrigger id="filtro-carrera">
+                        <SelectValue placeholder="Todas las carreras" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todas">Todas las carreras</SelectItem>
+                        {carrerasFiltradasPorFiltro.map((c) => (
+                          <SelectItem key={c.id} value={c.id.toString()}>
+                            {c.nombre}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label htmlFor="filtro-malla">Malla Curricular</Label>
+                    <Select 
+                      value={filtros.malla} 
+                      onValueChange={(v) => setFiltros(prev => ({ ...prev, malla: v }))}
+                      disabled={!filtros.carrera || filtros.carrera === "todas"}
+                    >
+                      <SelectTrigger id="filtro-malla">
+                        <SelectValue placeholder="Todas las mallas" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todas">Todas las mallas</SelectItem>
+                        {mallasFiltradasPorCarrera.map((m) => (
+                          <SelectItem key={m.id} value={m.id.toString()}>
+                            {m.codigo_malla}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                
+                <div className="flex justify-end mt-4">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setFiltros({ periodo: "", facultad: "", carrera: "", malla: "" })}
+                    className="border-emerald-500 text-emerald-700 hover:bg-emerald-50"
+                  >
+                    Limpiar Filtros
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
             <Card className="mb-8">
                <CardHeader>
                 <CardTitle>
@@ -361,13 +521,9 @@ export default function GestionDocentesPage() {
                         <div className="grid gap-2"><Label htmlFor="apellidos">Apellidos</Label><Input id="apellidos" name="apellidos" placeholder="Ej: Pérez González" value={formData.apellidos} onChange={(e) => setFormData({...formData, apellidos: e.target.value})} required /></div>
                     </div>
                     <div className="grid gap-2"><Label htmlFor="email">Correo Electrónico</Label><Input id="email" name="email" type="email" placeholder="juan.perez@universidad.edu" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} required /></div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="grid gap-2"><Label htmlFor="facultad">Facultad</Label><Select name="facultad" value={formData.facultad} onValueChange={(v) => handleSelectChange('facultad', v)} required><SelectTrigger id="facultad"><SelectValue placeholder="Seleccione una facultad" /></SelectTrigger><SelectContent>{facultades.map((f) => (<SelectItem key={f.id} value={f.id.toString()}>{f.nombre}</SelectItem>))}</SelectContent></Select></div>
-                        <div className="grid gap-2"><Label htmlFor="carrera">Carrera Principal</Label><Select name="carrera" value={formData.carrera} onValueChange={(v) => handleSelectChange('carrera', v)} disabled={!formData.facultad} required><SelectTrigger id="carrera"><SelectValue placeholder="Seleccione una carrera" /></SelectTrigger><SelectContent>{carrerasFiltradas.map((c) => (<SelectItem key={c.id} value={c.id.toString()}>{c.nombre}</SelectItem>))}</SelectContent></Select></div>
-                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="grid gap-2"><Label htmlFor="asignatura">Asignatura</Label><Select name="asignatura" value={formData.asignatura} onValueChange={(v) => handleSelectChange('asignatura', v)} disabled={!formData.carrera}><SelectTrigger id="asignatura"><SelectValue placeholder="Seleccione asignatura" /></SelectTrigger><SelectContent>{asignaturasFiltradas.map((a) => (<SelectItem key={a.id} value={a.id.toString()}>{a.nombre} ({a.codigo})</SelectItem>))}</SelectContent></Select></div>
                         <div className="grid gap-2"><Label htmlFor="nivel">Nivel</Label><Select name="nivel" value={formData.nivel} onValueChange={(v) => handleSelectChange('nivel', v)}><SelectTrigger id="nivel"><SelectValue placeholder="Seleccione nivel" /></SelectTrigger><SelectContent>{niveles.map((n) => (<SelectItem key={n.id} value={n.id.toString()}>{n.nombre}</SelectItem>))}</SelectContent></Select></div>
+                        <div className="grid gap-2"><Label htmlFor="asignatura">Asignatura</Label><Select name="asignatura" value={formData.asignatura} onValueChange={(v) => handleSelectChange('asignatura', v)} required><SelectTrigger id="asignatura"><SelectValue placeholder="Seleccione asignatura" /></SelectTrigger><SelectContent>{asignaturasFiltradas.map((a) => (<SelectItem key={a.id} value={a.id.toString()}>{a.nombre} ({a.codigo})</SelectItem>))}</SelectContent></Select></div>
                         <div className="grid gap-2"><Label htmlFor="paralelo">Paralelo</Label><Select name="paralelo" value={formData.paralelo} onValueChange={(v) => handleSelectChange('paralelo', v)}><SelectTrigger id="paralelo"><SelectValue placeholder="Seleccione paralelo" /></SelectTrigger><SelectContent>{paralelos.map((p) => (<SelectItem key={p.id} value={p.id.toString()}>{p.nombre}</SelectItem>))}</SelectContent></Select></div>
                     </div>
                     <div className="flex items-center space-x-4 rounded-md border p-4">
@@ -391,7 +547,7 @@ export default function GestionDocentesPage() {
                     <Table>
                       <TableHeader><TableRow className="bg-gray-50"><TableHead>N.</TableHead><TableHead>Docente</TableHead><TableHead>Carrera</TableHead><TableHead>Asignatura</TableHead><TableHead>Nivel</TableHead><TableHead>Paralelo</TableHead><TableHead>Estado</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader>
                       <TableBody>
-                        {profesores.map((profesor, index) => (
+                        {profesoresFiltrados.map((profesor, index) => (
                           <TableRow key={profesor.id}>
                             <TableCell>{index + 1}</TableCell>
                             <TableCell>
@@ -418,8 +574,10 @@ export default function GestionDocentesPage() {
                             </TableCell>
                           </TableRow>
                         ))}
-                        {profesores.length === 0 && !loading && (
-                          <TableRow><TableCell colSpan={8} className="text-center py-8 text-gray-500">No hay docentes registrados.</TableCell></TableRow>
+                        {profesoresFiltrados.length === 0 && !loading && (
+                          <TableRow><TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                            {profesores.length === 0 ? "No hay docentes registrados." : "No se encontraron docentes con los filtros seleccionados."}
+                          </TableCell></TableRow>
                         )}
                       </TableBody>
                     </Table>
@@ -430,6 +588,7 @@ export default function GestionDocentesPage() {
           </div>
         </main>
       </div>
+      )}
     </ProtectedRoute>
   )
 }

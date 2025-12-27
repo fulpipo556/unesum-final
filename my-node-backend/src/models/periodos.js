@@ -8,6 +8,11 @@ module.exports = function(sequelize, DataTypes) {
       allowNull: false,
       primaryKey: true
     },
+    codigo: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      unique: "periodos_codigo_key"
+    },
     nombre: {
       type: DataTypes.STRING(100),
       allowNull: false,

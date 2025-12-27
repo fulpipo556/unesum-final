@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import { ArrowLeft, Loader2, FileText, Calendar, CheckCircle, Eye } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
@@ -40,6 +42,8 @@ interface SesionExtraccion {
   total_titulos: number;
   created_at: string;
   fecha_extraccion?: string;
+  periodo_academico?: string;
+  periodo_id?: number;
   titulos: TituloExtraido[];
   agrupaciones?: AgrupacionTitulo[];
   agrupadosPorTipo: {
@@ -69,11 +73,17 @@ export default function DocenteFormularioDinamicoPage() {
   const [prefillField, setPrefillField] = useState<Record<string, any> | null>(null);
   const [mostrarTabla, setMostrarTabla] = useState(true);
   const [campoSeleccionadoId, setCampoSeleccionadoId] = useState<number | null>(null);
+  
+  // Estados para filtro de periodo
+  const [periodos, setPeriodos] = useState<any[]>([]);
+  const [periodoFiltro, setPeriodoFiltro] = useState<string>('');
+  
   const { token } = useAuth();
 
   useEffect(() => {
     fetchSesiones();
     fetchFormulariosGuardados();
+    fetchPeriodos();
   }, []);
 
   const fetchSesiones = async () => {
@@ -98,6 +108,27 @@ export default function DocenteFormularioDinamicoPage() {
     } catch (err) {
       console.error('Error:', err);
       setError('Error de conexión con el servidor');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchPeriodos = async () => {
+    try {
+      const response = await fetch('http://localhost:4000/api/periodo', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const data = await response.json();
+      if (data.success) {
+        setPeriodos(data.data || []);
+      }
+    } catch (err) {
+      console.error('Error cargando periodos:', err);
+    }
+  };
     } finally {
       setLoading(false);
     }
@@ -641,6 +672,24 @@ export default function DocenteFormularioDinamicoPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                {/* Filtro de Periodo */}
+                <div className="mb-6">
+                  <Label htmlFor="periodoFiltro" className="mb-2 block">Filtrar por Periodo Académico</Label>
+                  <Select value={periodoFiltro} onValueChange={setPeriodoFiltro}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todos los periodos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Todos los periodos</SelectItem>
+                      {periodos.map((periodo) => (
+                        <SelectItem key={periodo.id} value={periodo.id.toString()}>
+                          {periodo.nombre} ({periodo.codigo})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {sesiones.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
@@ -649,7 +698,9 @@ export default function DocenteFormularioDinamicoPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {sesiones.map((sesion) => (
+                    {sesiones
+                      .filter(sesion => !periodoFiltro || sesion.periodo_id?.toString() === periodoFiltro)
+                      .map((sesion) => (
                       <div
                         key={sesion.session_id}
                         className="p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
@@ -671,6 +722,11 @@ export default function DocenteFormularioDinamicoPage() {
                                 <span>{new Date(sesion.created_at).toLocaleDateString('es-ES')}</span>
                               </div>
                             </div>
+                            {sesion.periodo_academico && (
+                              <Badge variant="outline" className="text-xs">
+                                📅 {sesion.periodo_academico}
+                              </Badge>
+                            )}
                           </div>
                           <Button size="sm" variant="outline">
                             Abrir Formulario

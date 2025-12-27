@@ -44,7 +44,6 @@ export default function FuncionesSustantivasPage() {
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [formData, setFormData] = useState({
-    codigo: "",
     nombre: "",
     estado: "activo" as "activo" | "inactivo",
   })
@@ -108,7 +107,6 @@ const apiRequest = async (url: string, options = {}) => {
   }, [token])
   const handleNew = () => {
     setFormData({
-      codigo: "",
       nombre: "",
       estado: "activo",
     });
@@ -118,10 +116,10 @@ const apiRequest = async (url: string, options = {}) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!formData.codigo || !formData.nombre) {
+    if (!formData.nombre) {
       toast({
         title: "Error",
-        description: "El código y nombre son campos obligatorios",
+        description: "El nombre es campo obligatorio",
         variant: "destructive",
       })
       return
@@ -180,6 +178,7 @@ const apiRequest = async (url: string, options = {}) => {
         description: error.message || "Error al guardar la Unidad de organización curricular",
         variant: "destructive",
       })
+      handleNew()
     } finally {
       setSubmitting(false)
     }
@@ -207,6 +206,7 @@ const apiRequest = async (url: string, options = {}) => {
         })
         
         fetchFunciones()
+        handleNew()
       } catch (error) {
         console.error("Error:", error)
         toast({
@@ -222,7 +222,6 @@ const apiRequest = async (url: string, options = {}) => {
   // Agregar esta función en tu componente
 const handleEdit = (funcion: Organizacion) => {
   setFormData({
-    codigo: funcion.codigo,
     nombre: funcion.nombre,
     estado: funcion.estado,
   });
@@ -283,17 +282,17 @@ const handleEdit = (funcion: Organizacion) => {
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div className="grid md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="codigo" className="text-sm font-medium">
-                        Código *
+                      <Label htmlFor="nombre" className="text-sm font-medium">
+                        Unidad Organizacional Curricular *
                       </Label>
                       <Input
-                        id="codigo"
-                        placeholder="Ingrese el código"
-                        value={formData.codigo}
-                        onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
+                        id="nombre"
+                        placeholder="Ingrese la Unidad de Organización Curricular"
+                        value={formData.nombre}
+                        onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
                         required
                         className="border-gray-300"
-                        maxLength={10}
+                        maxLength={100}
                       />
                     </div>
 
@@ -314,21 +313,6 @@ const handleEdit = (funcion: Organizacion) => {
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="nombre" className="text-sm font-medium">
-                      Unidad Organizacional Curricular *
-                    </Label>
-                    <Input
-                      id="nombre"
-                      placeholder="Ingrese la Unidad de Organización Curricular"
-                      value={formData.nombre}
-                      onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                      required
-                      className="border-gray-300"
-                      maxLength={100}
-                    />
                   </div>
 
                     <div className="flex gap-4 pt-4">

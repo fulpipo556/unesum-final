@@ -2,6 +2,7 @@ const express = require('express');
 const authRoutes = require('./auth.routes');
 const userRoutes = require('./user.routes'); 
 const funcionesSustantivasRoutes = require('./funcionesSustantivas.routes'); 
+const actividadesRoutes = require('./actividades.routes');
 const paraleloRoutes = require('./paralelo.routes');
 const nivelRoutes = require('./nivel.routes');
 const organizacionRoutes = require('./organizacion.routes');
@@ -16,6 +17,7 @@ const periodoRoutes = require('./periodo.routes');
 const mallaCurricularRoutes = require('./mallaCurricular.routes');
 const mallaRoutes = require('./malla.routes');
 const syllabusExtractionRoutes = require('./syllabusExtractionRoutes');
+const comisionAcademicaRoutes = require('./comisionAcademica.routes');
 const router = express.Router();
 
 module.exports = (app) => {
@@ -29,6 +31,7 @@ module.exports = (app) => {
   router.use('/organizacion', organizacionRoutes);
   router.use('/organizacion_curricular', organizacionRoutes);
   router.use('/funciones-sustantivas', funcionesSustantivasRoutes); 
+  router.use('/actividades', actividadesRoutes);
   router.use('/programas-analiticos', programasAnaliticosRoutes); 
   router.use('/programa-analitico', programaAnaliticoRoutes);
   router.use('/datos-academicos', datosAcademicosRoutes);
@@ -41,4 +44,5 @@ module.exports = (app) => {
   router.use('/malla-curricular', mallaCurricularRoutes);
   router.use('/mallas', mallaRoutes);
   router.use('/syllabus-extraction', syllabusExtractionRoutes);
+  router.use('/comision-academica', comisionAcademicaRoutes);
 };

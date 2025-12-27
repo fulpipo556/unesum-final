@@ -144,6 +144,10 @@ const apiRequest = async (url: string, options = {}) => {
         
         if (!response.ok) {
           const error = await response.json()
+          // Si es error de duplicado, resetear los campos
+          if (error.message && (error.message.includes("Ya existe") || error.message.includes("duplicado"))) {
+            handleNew()
+          }
           throw new Error(error.message || "Error al actualizar la función")
         }
         
@@ -163,6 +167,10 @@ const apiRequest = async (url: string, options = {}) => {
         
         if (!response.ok) {
           const error = await response.json()
+          // Si es error de duplicado, resetear los campos
+          if (error.message && (error.message.includes("Ya existe") || error.message.includes("duplicado"))) {
+            handleNew()
+          }
           throw new Error(error.message || "Error al crear la función")
         }
         
@@ -191,16 +199,19 @@ const apiRequest = async (url: string, options = {}) => {
     if (confirm("¿Estás seguro de que deseas eliminar esta función sustantiva?")) {
       try {
         setLoading(true)
-        // CORREGIDO
+        console.log("Eliminando función con ID:", id); // Debug
         const response = await apiRequest(
-          `/funciones-sustantivas/${id}`, // Quitar process.env.NEXT_PUBLIC_API_URL
+          `funciones-sustantivas/${id}`,
           {
             method: "DELETE",
           }
         )
         
+        console.log("Respuesta de eliminación:", response.status); // Debug
+        
         if (!response.ok) {
-          throw new Error("Error al eliminar la función")
+          const errorData = await response.json();
+          throw new Error(errorData.message || "Error al eliminar la función")
         }
         
         toast({
@@ -208,12 +219,12 @@ const apiRequest = async (url: string, options = {}) => {
           description: "Función sustantiva eliminada correctamente",
         })
         
-        fetchFunciones()
-      } catch (error) {
-        console.error("Error:", error)
+        await fetchFunciones()
+      } catch (error: any) {
+        console.error("Error al eliminar:", error)
         toast({
           title: "Error",
-          description: "No se pudo eliminar la función sustantiva",
+          description: error.message || "No se pudo eliminar la función sustantiva",
           variant: "destructive",
         })
       } finally {

@@ -31,7 +31,7 @@ export interface FuncionSustantiva {
 // Paralelo
 export interface Paralelo {
   id: string
-  codigo: string
+  codigo?: string // Código automático generado
   nombre: string
   estado: "activo" | "inactivo"
   createdAt: Date
@@ -41,7 +41,7 @@ export interface Paralelo {
 // Periodo
 export interface Periodo {
   id: string
-  codigo: string
+  codigo?: string // Código automático generado
   nombre: string
   estado: "activo" | "inactivo"
   createdAt: Date
@@ -58,10 +58,10 @@ export interface Nivel {
   updatedAt: Date
 }
 
-// Nivel
+// Organizacion
 export interface Organizacion {
   id: string
-  codigo: string
+  codigo?: string // Código automático generado
   nombre: string
   estado: "activo" | "inactivo"
   createdAt: Date

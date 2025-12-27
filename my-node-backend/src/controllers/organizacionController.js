@@ -53,31 +53,44 @@ exports.getById = async (req, res) => {
 };
 
 
-// Crear una nuevo nivel
+// Crear una nueva organización
 exports.create = async (req, res) => {
   try {
-    const { codigo, nombre, estado } = req.body;
+    const { nombre, estado } = req.body;
     
     // Validaciones básicas
-    if (!codigo || !nombre) {
+    if (!nombre) {
       return res.status(400).json({
         success: false,
-        message: 'El código y nombre son campos obligatorios'
+        message: 'El nombre es campo obligatorio'
       });
     }
     
-    // Verificar si ya existe un nivel con el mismo código
-    const existente = await Organizacion.findOne({ where: { codigo } });
+    // Verificar si ya existe una organización con el mismo nombre
+    const existente = await Organizacion.findOne({ where: { nombre } });
     if (existente) {
       return res.status(400).json({
         success: false,
-        message: `Ya existe una Unidad de Organización curricular con el código ${codigo}`
+        message: `Ya existe una Unidad de Organización curricular con el nombre ${nombre}`
       });
     }
     
-    // Crear la nueva función
+    // Generar código automático
+    const ultimaOrganizacion = await Organizacion.findOne({
+      order: [['id', 'DESC']]
+    });
+    
+    let nuevoCodigo = 'ORG-001';
+    if (ultimaOrganizacion && ultimaOrganizacion.codigo) {
+      // Extraer el número del último código y sumar 1
+      const ultimoNumero = parseInt(ultimaOrganizacion.codigo.split('-')[1]);
+      const nuevoNumero = ultimoNumero + 1;
+      nuevoCodigo = `ORG-${String(nuevoNumero).padStart(3, '0')}`;
+    }
+    
+    // Crear la nueva organización
     const nuevoOrganizacion = await Organizacion.create({
-      codigo,
+      codigo: nuevoCodigo,
       nombre,
       estado: estado || 'activo'
     });
@@ -97,13 +110,13 @@ exports.create = async (req, res) => {
   }
 };
 
-// Actualizar un Nivel
+// Actualizar una Organización
 exports.update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { codigo, nombre, estado } = req.body;
+    const { nombre, estado } = req.body;
     
-    // Buscar la función a actualizar
+    // Buscar la organización a actualizar
     const organizacion_curricular = await Organizacion.findByPk(id);
     
     if (!organizacion_curricular) {
@@ -113,20 +126,19 @@ exports.update = async (req, res) => {
       });
     }
     
-    // Si se cambia el código, verificar que no exista otro con ese código
-    if (codigo && codigo !== organizacion_curricular.codigo) {
-      const existente = await Organizacion.findOne({ where: { codigo } });
-      if (existente) {
+    // Verificar si el nombre ya existe en otra organización
+    if (nombre && nombre !== organizacion_curricular.nombre) {
+      const existente = await Organizacion.findOne({ where: { nombre } });
+      if (existente && existente.id !== parseInt(id)) {
         return res.status(400).json({
           success: false,
-          message: `Ya existe otra Unidad de organización curricular con el código ${codigo}`
+          message: `Ya existe otra Unidad de organización curricular con el nombre ${nombre}`
         });
       }
     }
     
-    // Actualizar los campos
+    // Actualizar los campos (el código no se puede cambiar)
     await organizacion_curricular.update({
-      codigo: codigo || organizacion_curricular.codigo,
       nombre: nombre || organizacion_curricular.nombre,
       estado: estado || organizacion_curricular.estado
     });

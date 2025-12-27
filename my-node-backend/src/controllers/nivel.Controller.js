@@ -58,25 +58,36 @@ exports.create = async (req, res) => {
     const { codigo, nombre, estado } = req.body;
     
     // Validaciones básicas
-    if (!codigo || !nombre) {
+    if (!nombre) {
       return res.status(400).json({
         success: false,
-        message: 'El código y nombre son campos obligatorios'
+        message: 'El nombre es un campo obligatorio'
       });
     }
     
+    // Generar código automáticamente si no se proporciona
+    let codigoFinal = codigo;
+    if (!codigoFinal) {
+      // Obtener el último nivel para generar el siguiente código
+      const ultimoNivel = await Nivel.findOne({
+        order: [['id', 'DESC']]
+      });
+      const siguienteNumero = ultimoNivel ? ultimoNivel.id + 1 : 1;
+      codigoFinal = siguienteNumero.toString();
+    }
+    
     // Verificar si ya existe un nivel con el mismo código
-    const existente = await Nivel.findOne({ where: { codigo } });
+    const existente = await Nivel.findOne({ where: { codigo: codigoFinal } });
     if (existente) {
       return res.status(400).json({
         success: false,
-        message: `Ya existe un nivel con el código ${codigo}`
+        message: `Ya existe un nivel con el código ${codigoFinal}`
       });
     }
     
     // Crear la nueva función
     const nuevoNivel = await Nivel.create({
-      codigo,
+      codigo: codigoFinal,
       nombre,
       estado: estado || 'activo'
     });
@@ -100,7 +111,15 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { codigo, nombre, estado } = req.body;
+    const { nombre, estado } = req.body;
+    
+    // Validación básica
+    if (!nombre) {
+      return res.status(400).json({
+        success: false,
+        message: 'El nombre es un campo obligatorio'
+      });
+    }
     
     // Buscar la función a actualizar
     const nivel = await Nivel.findByPk(id);
@@ -112,20 +131,8 @@ exports.update = async (req, res) => {
       });
     }
     
-    // Si se cambia el código, verificar que no exista otro con ese código
-    if (codigo && codigo !== nivel.codigo) {
-      const existente = await Nivel.findOne({ where: { codigo } });
-      if (existente) {
-        return res.status(400).json({
-          success: false,
-          message: `Ya existe otro Nivel con el código ${codigo}`
-        });
-      }
-    }
-    
-    // Actualizar los campos
+    // Actualizar los campos (el código no se modifica)
     await nivel.update({
-      codigo: codigo || nivel.codigo,
       nombre: nombre || nivel.nombre,
       estado: estado || nivel.estado
     });

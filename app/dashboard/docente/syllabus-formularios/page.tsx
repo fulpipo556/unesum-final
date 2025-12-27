@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Label } from '@/components/ui/label'
 import { 
   FileText, 
   Calendar, 
@@ -25,6 +27,8 @@ interface SesionSyllabus {
   tipo_archivo: string
   total_titulos: string
   fecha_extraccion: string
+  periodo_academico?: string
+  periodo_id?: number
 }
 
 interface Titulo {
@@ -55,10 +59,15 @@ export default function SyllabusFormulariosDocentePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [tituloSeleccionado, setTituloSeleccionado] = useState<Titulo | null>(null)
+  
+  // Estados para filtro de periodo
+  const [periodos, setPeriodos] = useState<any[]>([])
+  const [periodoFiltro, setPeriodoFiltro] = useState<string>('todos')
 
   useEffect(() => {
     if (token) {
       cargarSesiones()
+      cargarPeriodos()
     }
   }, [token])
 
@@ -86,6 +95,23 @@ export default function SyllabusFormulariosDocentePage() {
       setError('Error al cargar las sesiones de Syllabus')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const cargarPeriodos = async () => {
+    try {
+      const response = await fetch(`${API_URL}/periodo`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      const data = await response.json()
+      if (data.success) {
+        setPeriodos(data.data || [])
+      }
+    } catch (err) {
+      console.error('Error cargando periodos:', err)
     }
   }
 
@@ -224,18 +250,18 @@ export default function SyllabusFormulariosDocentePage() {
                           className="border rounded-lg p-4 bg-gray-50 space-y-2"
                         >
                           <label className="font-medium text-sm flex items-center gap-2">
-                            <span className="text-blue-600">{titulo.titulo}</span>
+                            <span className="text-[#00563F]">{titulo.titulo}</span>
                             <span className="text-xs text-gray-500">
                               (Fila {titulo.fila}, Col {titulo.columna_letra})
                             </span>
                           </label>
                           <textarea
-                            className="w-full min-h-[100px] p-3 border rounded-md resize-y focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full min-h-[100px] p-3 border rounded-md resize-y focus:ring-2 focus:ring-[#00563F] focus:border-transparent"
                             placeholder={`Ingrese el contenido para: ${titulo.titulo}`}
                             defaultValue=""
                           />
                           <div className="flex justify-end">
-                            <Button size="sm" variant="outline">
+                            <Button size="sm" variant="outline" className="text-[#00563F] border-[#00563F] hover:bg-[#00563F] hover:text-white">
                               💾 Guardar
                             </Button>
                           </div>
@@ -261,18 +287,18 @@ export default function SyllabusFormulariosDocentePage() {
             className="border rounded-lg p-4 bg-gray-50 space-y-2"
           >
             <label className="font-medium text-sm flex items-center gap-2">
-              <span className="text-blue-600">{titulo.titulo}</span>
+              <span className="text-[#00563F]">{titulo.titulo}</span>
               <span className="text-xs text-gray-500">
                 {titulo.tipo} - Fila {titulo.fila}, Col {titulo.columna_letra}
               </span>
             </label>
             <textarea
-              className="w-full min-h-[100px] p-3 border rounded-md resize-y focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full min-h-[100px] p-3 border rounded-md resize-y focus:ring-2 focus:ring-[#00563F] focus:border-transparent"
               placeholder={`Ingrese el contenido para: ${titulo.titulo}`}
               defaultValue=""
             />
             <div className="flex justify-end">
-              <Button size="sm" variant="outline">
+              <Button size="sm" variant="outline" className="text-[#00563F] border-[#00563F] hover:bg-[#00563F] hover:text-white">
                 💾 Guardar
               </Button>
             </div>
@@ -301,104 +327,134 @@ export default function SyllabusFormulariosDocentePage() {
   // Los formularios se muestran directamente en la vista de pestañas
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-6xl">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold flex items-center gap-3">
-          <ClipboardList className="h-8 w-8 text-blue-500" />
-          Formularios de Syllabus
-        </h1>
-        <p className="text-gray-600 mt-2">
-          Completa los formularios organizados del Syllabus
-        </p>
+    <div className="min-h-screen bg-gray-50">
+      <div className="bg-[#00563F] text-white px-6 py-6 mb-8">
+        <div className="container mx-auto max-w-6xl">
+          <h1 className="text-3xl font-bold flex items-center gap-3">
+            <ClipboardList className="h-8 w-8" />
+            Formularios de Syllabus
+          </h1>
+          <p className="text-green-100 mt-2">
+            Completa los formularios organizados del Syllabus
+          </p>
+        </div>
       </div>
 
-      {error && (
-        <Alert variant="destructive" className="mb-6">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      <div className="container mx-auto px-4 max-w-6xl">
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
 
-      {sesionSeleccionada ? (
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="h-5 w-5" />
-                    {sesionSeleccionada.nombre_archivo}
-                  </CardTitle>
-                  <CardDescription>
-                    {sesionSeleccionada.total_titulos} títulos disponibles
-                  </CardDescription>
-                </div>
-                <Button variant="outline" onClick={volverALista}>
-                  ← Cambiar Syllabus
-                </Button>
-              </div>
-            </CardHeader>
-          </Card>
-
-          {agrupaciones.length > 0 ? renderVistaPorPestanas() : renderVistaSinPestanas()}
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Sesiones de Syllabus Disponibles</CardTitle>
-              <CardDescription>
-                Selecciona un Syllabus para completar sus formularios
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          {sesiones.length === 0 ? (
+        {sesionSeleccionada ? (
+          <div className="space-y-6">
             <Card>
-              <CardContent className="text-center py-12">
-                <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600">
-                  No hay sesiones de Syllabus disponibles
-                </p>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <FileText className="h-5 w-5" />
+                      {sesionSeleccionada.nombre_archivo}
+                    </CardTitle>
+                    <CardDescription>
+                      {sesionSeleccionada.total_titulos} títulos disponibles
+                    </CardDescription>
+                  </div>
+                  <Button variant="outline" onClick={volverALista}>
+                    ← Cambiar Syllabus
+                  </Button>
+                </div>
+              </CardHeader>
+            </Card>
+
+            {agrupaciones.length > 0 ? renderVistaPorPestanas() : renderVistaSinPestanas()}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Sesiones de Syllabus Disponibles</CardTitle>
+                <CardDescription>
+                  Selecciona un Syllabus para completar sus formularios
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {/* Filtro de Periodo */}
+                <div className="mb-6">
+                  <Label htmlFor="periodoFiltro" className="mb-2 block">Filtrar por Periodo Académico</Label>
+                  <Select value={periodoFiltro} onValueChange={setPeriodoFiltro}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todos los periodos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos los periodos</SelectItem>
+                      {periodos.map((periodo) => (
+                        <SelectItem key={periodo.id} value={periodo.id.toString()}>
+                          {periodo.nombre} ({periodo.codigo})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </CardContent>
             </Card>
-          ) : (
-            <div className="grid gap-4">
-              {sesiones.map((sesion) => (
-                <Card
-                  key={sesion.session_id}
-                  className="hover:shadow-lg transition-shadow cursor-pointer"
-                  onClick={() => seleccionarSesion(sesion.session_id)}
-                >
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <CardTitle className="flex items-center gap-2 text-lg">
-                          <FileText className="h-5 w-5 text-blue-500" />
-                          {sesion.nombre_archivo}
-                        </CardTitle>
-                        <CardDescription className="mt-2 space-y-1">
-                          <div className="flex items-center gap-4 text-sm">
-                            <span>📄 {sesion.tipo_archivo}</span>
-                            <span>📋 {sesion.total_titulos} títulos</span>
-                            <span className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              {new Date(sesion.fecha_extraccion).toLocaleDateString()}
-                            </span>
-                          </div>
-                        </CardDescription>
+
+            {sesiones.length === 0 ? (
+              <Card>
+                <CardContent className="text-center py-12">
+                  <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600">
+                    No hay sesiones de Syllabus disponibles
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-4">
+                {sesiones
+                  .filter(sesion => periodoFiltro === 'todos' || sesion.periodo_id?.toString() === periodoFiltro)
+                  .map((sesion) => (
+                  <Card
+                    key={sesion.session_id}
+                    className="hover:shadow-lg transition-shadow cursor-pointer"
+                    onClick={() => seleccionarSesion(sesion.session_id)}
+                  >
+                    <CardHeader>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <FileText className="h-5 w-5 text-[#00563F]" />
+                            {sesion.nombre_archivo}
+                          </CardTitle>
+                          <CardDescription className="mt-2 space-y-1">
+                            <div className="flex items-center gap-4 text-sm">
+                              <span>📄 {sesion.tipo_archivo}</span>
+                              <span>📋 {sesion.total_titulos} títulos</span>
+                              <span className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                {new Date(sesion.fecha_extraccion).toLocaleDateString()}
+                              </span>
+                            </div>
+                            {sesion.periodo_academico && (
+                              <Badge variant="outline" className="text-xs mt-2">
+                                📅 {sesion.periodo_academico}
+                              </Badge>
+                            )}
+                          </CardDescription>
+                        </div>
+                        <Button size="sm">
+                          Abrir →
+                        </Button>
                       </div>
-                      <Button size="sm">
-                        Abrir →
-                      </Button>
-                    </div>
-                  </CardHeader>
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+                    </CardHeader>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

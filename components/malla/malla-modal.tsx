@@ -174,6 +174,16 @@ export default function MallaModal({ open, onClose, onMallaSelected }: MallaModa
     }
   };
 
+  const handleCancelar = () => {
+    // Resetear campos pero mantener el modal abierto
+    setMallaSeleccionadaId("");
+    setNuevoCodigoMalla("");
+    setModoCrear(false);
+    setSelectedFacultad("");
+    setSelectedCarrera("");
+    // NO llamar a onClose() - mantener el modal abierto
+  };
+
   const handleClose = () => {
     setMallaSeleccionadaId("");
     setNuevoCodigoMalla("");
@@ -183,9 +193,27 @@ export default function MallaModal({ open, onClose, onMallaSelected }: MallaModa
     onClose();
   };
 
+  // Prevenir el cierre del modal - solo permitir cuando se ha seleccionado una malla
+  const handleOpenChange = (isOpen: boolean) => {
+    // No hacer nada si intentan cerrar - el modal es obligatorio
+    if (!isOpen) {
+      return;
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[600px]">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent 
+        className="sm:max-w-[600px]"
+        onEscapeKeyDown={(e) => e.preventDefault()}
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+      >
+        <style jsx global>{`
+          [data-radix-dialog-content] > button[aria-label="Close"] {
+            display: none !important;
+          }
+        `}</style>
         <DialogHeader>
           <DialogTitle className="text-2xl text-[#00563F]">
             Código de Malla Curricular
@@ -194,6 +222,15 @@ export default function MallaModal({ open, onClose, onMallaSelected }: MallaModa
             Seleccione una malla existente o cree una nueva
           </DialogDescription>
         </DialogHeader>
+
+        <div className="flex items-start gap-2 p-3 bg-red-50 border-2 border-red-300 rounded-lg">
+          <svg className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div className="text-sm text-red-800">
+            <strong>⚠️ SELECCIÓN OBLIGATORIA:</strong> Debe seleccionar o crear una malla curricular para continuar. No puede cerrar esta ventana sin completar este paso.
+          </div>
+        </div>
 
         <div className="space-y-6 py-4">
           {!modoCrear ? (
@@ -329,7 +366,7 @@ export default function MallaModal({ open, onClose, onMallaSelected }: MallaModa
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
+          <Button variant="outline" onClick={handleCancelar}>
             Cancelar
           </Button>
           {!modoCrear ? (

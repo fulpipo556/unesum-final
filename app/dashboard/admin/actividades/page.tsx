@@ -12,124 +12,195 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Pencil, Trash2, Plus, Save, Upload, Trash } from "lucide-react"
+import { Pencil, Trash2, Plus, Save, Upload, Trash, Loader2 } from "lucide-react"
 import type { ActividadExtracurricular, FuncionSustantiva } from "@/types"
+import { useAuth } from "@/contexts/auth-context"
+
+function useToast() {
+  return {
+    toast: (props: { title: string; description: string; variant?: string }) => {
+      const { title, description, variant } = props;
+      if (variant === "destructive") {
+        console.error(`${title}: ${description}`);
+      } else {
+        console.log(`${title}: ${description}`);
+      }
+      alert(variant === "destructive" ? `Error: ${description}` : `${title}: ${description}`);
+    }
+  };
+}
 
 export default function ActividadesPage() {
+  const { token, getToken } = useAuth()
+  const { toast } = useToast()
   const [actividades, setActividades] = useState<ActividadExtracurricular[]>([])
   const [funciones, setFunciones] = useState<FuncionSustantiva[]>([])
   const [isEditing, setIsEditing] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [formData, setFormData] = useState({
     funcionSustantivaId: "",
-    codigo: "",
     nombre: "",
     descripcion: "",
     estado: "activo" as "activo" | "inactivo",
   })
 
-  // Mock data - replace with real API calls
-  useEffect(() => {
-    const mockFunciones: FuncionSustantiva[] = [
-      {
-        id: "1",
-        codigo: "FS001",
-        nombre: "Docencia",
-        descripcion: "Actividades relacionadas con la enseñanza",
-        estado: "activo",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      {
-        id: "2",
-        codigo: "FS002",
-        nombre: "Investigación",
-        descripcion: "Proyectos de investigación científica",
-        estado: "activo",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      {
-        id: "3",
-        codigo: "FS003",
-        nombre: "Vinculación con la Sociedad",
-        descripcion: "Actividades de extensión universitaria",
-        estado: "activo",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    ]
-    setFunciones(mockFunciones)
-
-    const mockActividades: ActividadExtracurricular[] = [
-      {
-        id: "1",
-        codigo: "ACT001",
-        nombre: "Taller de Programación Avanzada",
-        funcionSustantivaId: "1",
-        descripcion: "Taller especializado en técnicas avanzadas de programación",
-        estado: "activo",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      {
-        id: "2",
-        codigo: "ACT002",
-        nombre: "Proyecto de Investigación en IA",
-        funcionSustantivaId: "2",
-        descripcion: "Investigación sobre inteligencia artificial aplicada",
-        estado: "activo",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      {
-        id: "3",
-        codigo: "ACT003",
-        nombre: "Brigada de Salud Comunitaria",
-        funcionSustantivaId: "3",
-        descripcion: "Actividad de vinculación con la comunidad local",
-        estado: "inactivo",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    ]
-    setActividades(mockActividades)
-  }, [])
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (editingId) {
-      // Update existing activity
-      setActividades(
-        actividades.map((actividad) =>
-          actividad.id === editingId
-            ? {
-                ...actividad,
-                ...formData,
-                updatedAt: new Date(),
-              }
-            : actividad,
-        ),
-      )
-    } else {
-      // Create new activity
-      const newActividad: ActividadExtracurricular = {
-        id: Date.now().toString(),
-        ...formData,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }
-      setActividades([...actividades, newActividad])
+  // Función para hacer peticiones al API con el token
+  const apiRequest = async (url: string, options = {}) => {
+    const BASE_URL = 'http://localhost:4000/api';
+    let cleanPath = url;
+    if (cleanPath.startsWith('/')) {
+      cleanPath = cleanPath.substring(1);
+    }
+    const fullUrl = `${BASE_URL}/${cleanPath}`;
+    
+    const currentToken = token || getToken();
+    const headers = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${currentToken}`,
     }
 
-    handleNew()
+    return fetch(fullUrl, {
+      ...options,
+      headers,
+    });
+  }
+
+  // Cargar funciones sustantivas y actividades al iniciar
+  useEffect(() => {
+    if (token) {
+      fetchFunciones()
+      fetchActividades()
+    }
+  }, [token])
+
+  const fetchFunciones = async () => {
+    try {
+      const response = await apiRequest('/funciones-sustantivas')
+      if (!response.ok) throw new Error("Error al cargar funciones sustantivas")
+      const data = await response.json()
+      setFunciones(data.data || [])
+    } catch (error) {
+      console.error("Error al cargar funciones:", error)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar las funciones sustantivas",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const fetchActividades = async () => {
+    try {
+      setLoading(true)
+      const response = await apiRequest('/actividades')
+      if (!response.ok) throw new Error("Error al cargar actividades")
+      const data = await response.json()
+      // Mapear los campos del backend (snake_case) a camelCase
+      const actividadesMapeadas = (data.data || []).map((act: any) => ({
+        ...act,
+        funcionSustantivaId: act.funcion_sustantiva_id?.toString() || null
+      }))
+      setActividades(actividadesMapeadas)
+      console.log('Actividades cargadas:', actividadesMapeadas)
+    } catch (error) {
+      console.error("Error al cargar actividades:", error)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar las actividades",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!formData.funcionSustantivaId || !formData.nombre) {
+      toast({
+        title: "Error",
+        description: "La función sustantiva y el nombre son campos obligatorios",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setSubmitting(true)
+
+      if (editingId) {
+        // Actualizar actividad existente
+        const response = await apiRequest(`/actividades/${editingId}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            funcion_sustantiva_id: formData.funcionSustantivaId,
+            nombre: formData.nombre,
+            descripcion: formData.descripcion,
+            estado: formData.estado,
+          }),
+        })
+
+        if (!response.ok) {
+          const error = await response.json()
+          // Si es error de duplicado, resetear los campos
+          if (error.message && (error.message.includes("Ya existe") || error.message.includes("duplicado"))) {
+            handleNew()
+          }
+          throw new Error(error.message || "Error al actualizar la actividad")
+        }
+
+        toast({
+          title: "Éxito",
+          description: "Actividad actualizada correctamente",
+        })
+      } else {
+        // Crear nueva actividad (código autogenerado)
+        const response = await apiRequest(`/actividades`, {
+          method: "POST",
+          body: JSON.stringify({
+            funcion_sustantiva_id: formData.funcionSustantivaId,
+            nombre: formData.nombre,
+            descripcion: formData.descripcion,
+            estado: formData.estado,
+          }),
+        })
+
+        if (!response.ok) {
+          const error = await response.json()
+          // Si es error de duplicado, resetear los campos
+          if (error.message && (error.message.includes("Ya existe") || error.message.includes("duplicado"))) {
+            handleNew()
+          }
+          throw new Error(error.message || "Error al crear la actividad")
+        }
+
+        toast({
+          title: "Éxito",
+          description: "Actividad creada correctamente",
+        })
+      }
+
+      // Recargar datos y limpiar formulario
+      fetchActividades()
+      handleNew()
+    } catch (error: any) {
+      console.error("Error:", error)
+      toast({
+        title: "Error",
+        description: error.message || "Error al guardar la actividad",
+        variant: "destructive",
+      })
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const handleNew = () => {
     setFormData({
       funcionSustantivaId: "",
-      codigo: "",
       nombre: "",
       descripcion: "",
       estado: "activo",
@@ -141,7 +212,6 @@ export default function ActividadesPage() {
   const handleEdit = (actividad: ActividadExtracurricular) => {
     setFormData({
       funcionSustantivaId: actividad.funcionSustantivaId,
-      codigo: actividad.codigo,
       nombre: actividad.nombre,
       descripcion: actividad.descripcion || "",
       estado: actividad.estado,
@@ -150,27 +220,58 @@ export default function ActividadesPage() {
     setEditingId(actividad.id)
   }
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm("¿Estás seguro de que deseas eliminar esta actividad?")) {
-      setActividades(actividades.filter((actividad) => actividad.id !== id))
+      try {
+        setLoading(true)
+        const response = await apiRequest(`/actividades/${id}`, {
+          method: "DELETE",
+        })
+
+        if (!response.ok) throw new Error("Error al eliminar la actividad")
+
+        toast({
+          title: "Éxito",
+          description: "Actividad eliminada correctamente",
+        })
+
+        fetchActividades()
+      } catch (error) {
+        console.error("Error:", error)
+        toast({
+          title: "Error",
+          description: "No se pudo eliminar la actividad",
+          variant: "destructive",
+        })
+      } finally {
+        setLoading(false)
+      }
     }
   }
 
   const handleDeleteAll = () => {
-    if (confirm("¿Estás seguro de que deseas eliminar TODAS las actividades? Esta acción no se puede deshacer.")) {
-      setActividades([])
-    }
+    alert("Por seguridad, esta función requiere confirmación manual del administrador de base de datos")
   }
 
   const handleImportExcel = () => {
-    // This would open a file picker and handle Excel import
     alert("Funcionalidad de importación Excel será implementada próximamente")
   }
 
   const getFuncionNombre = (funcionId: string) => {
-    const funcion = funciones.find((f) => f.id === funcionId)
-    return funcion ? `${funcion.codigo} - ${funcion.nombre}` : "No asignada"
+    if (!funcionId) return "No asignada"
+    const funcion = funciones.find((f) => f.id.toString() === funcionId.toString())
+    return funcion ? funcion.nombre : "No asignada"
   }
+
+  // Filtrar actividades por función sustantiva seleccionada
+  const actividadesFiltradas = formData.funcionSustantivaId
+    ? actividades.filter((act) => act.funcionSustantivaId?.toString() === formData.funcionSustantivaId.toString())
+    : actividades
+
+  console.log('Filtro activo:', formData.funcionSustantivaId)
+  console.log('Total actividades:', actividades.length)
+  console.log('Actividades filtradas:', actividadesFiltradas.length)
+  console.log('Actividades:', actividades.map(a => ({ id: a.id, funcion: a.funcionSustantivaId, nombre: a.nombre })))
 
   return (
     <ProtectedRoute allowedRoles={["administrador"]}>
@@ -191,7 +292,7 @@ export default function ActividadesPage() {
                   {/* Function Selection */}
                   <div className="space-y-2">
                     <Label htmlFor="funcionSustantiva" className="text-sm font-medium">
-                      Funciones Sustantivas
+                      Funciones Sustantivas *
                     </Label>
                     <Select
                       value={formData.funcionSustantivaId}
@@ -210,25 +311,10 @@ export default function ActividadesPage() {
                     </Select>
                   </div>
 
-                  {/* Code Field */}
-                  <div className="space-y-2">
-                    <Label htmlFor="codigo" className="text-sm font-medium">
-                      Código *
-                    </Label>
-                    <Input
-                      id="codigo"
-                      placeholder="Ingrese el código de la actividad"
-                      value={formData.codigo}
-                      onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
-                      required
-                      className="border-gray-300"
-                    />
-                  </div>
-
                   {/* Activities Field */}
                   <div className="space-y-2">
                     <Label htmlFor="actividades" className="text-sm font-medium">
-                      Actividades *
+                      Nombre de Actividad *
                     </Label>
                     <Input
                       id="actividades"
@@ -238,6 +324,7 @@ export default function ActividadesPage() {
                       required
                       className="border-gray-300"
                     />
+                    
                   </div>
 
                   {/* Description Field */}
@@ -273,15 +360,29 @@ export default function ActividadesPage() {
 
                   {/* Action Buttons */}
                   <div className="flex flex-wrap gap-4 pt-4">
-                    <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white px-6">
-                      <Save className="h-4 w-4 mr-2" />
-                      GUARDAR
+                    <Button 
+                      type="submit" 
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-6"
+                      disabled={submitting}
+                    >
+                      {submitting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          GUARDANDO...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="h-4 w-4 mr-2" />
+                          GUARDAR
+                        </>
+                      )}
                     </Button>
                     <Button
                       type="button"
                       onClick={handleNew}
                       variant="outline"
                       className="border-blue-500 text-blue-600 hover:bg-blue-50 px-6 bg-transparent"
+                      disabled={submitting}
                     >
                       <Plus className="h-4 w-4 mr-2" />
                       NUEVO
@@ -291,6 +392,7 @@ export default function ActividadesPage() {
                       onClick={handleDeleteAll}
                       variant="outline"
                       className="border-red-500 text-red-600 hover:bg-red-50 px-6 bg-transparent"
+                      disabled={submitting}
                     >
                       <Trash className="h-4 w-4 mr-2" />
                       ELIMINAR TODO
@@ -299,6 +401,7 @@ export default function ActividadesPage() {
                       type="button"
                       onClick={handleImportExcel}
                       className="bg-blue-500 hover:bg-blue-600 text-white px-6"
+                      disabled={submitting}
                     >
                       <Upload className="h-4 w-4 mr-2" />
                       IMPORTAR XLSX
@@ -328,53 +431,65 @@ export default function ActividadesPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {actividades.map((actividad, index) => (
-                        <TableRow key={actividad.id} className="hover:bg-gray-50">
-                          <TableCell className="font-medium">{index + 1}</TableCell>
-                          <TableCell>{actividad.codigo}</TableCell>
-                          <TableCell>{actividad.nombre}</TableCell>
-                          <TableCell>{getFuncionNombre(actividad.funcionSustantivaId)}</TableCell>
-                          <TableCell>{actividad.descripcion || "-"}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={actividad.estado === "activo" ? "default" : "secondary"}
-                              className={
-                                actividad.estado === "activo"
-                                  ? "bg-green-100 text-green-800"
-                                  : "bg-gray-100 text-gray-800"
-                              }
-                            >
-                              {actividad.estado === "activo" ? "Activado" : "Desactivado"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleEdit(actividad)}
-                                className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleDelete(actividad.id)}
-                                className="text-red-600 border-red-200 hover:bg-red-50"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
+                      {loading ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-8">
+                            <Loader2 className="h-8 w-8 animate-spin mx-auto text-emerald-600" />
+                            <p className="mt-2 text-gray-500">Cargando actividades...</p>
                           </TableCell>
                         </TableRow>
-                      ))}
-                      {actividades.length === 0 && (
+                      ) : actividadesFiltradas.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={7} className="text-center py-8 text-gray-500">
-                            No hay actividades extracurriculares registradas
+                            {formData.funcionSustantivaId
+                              ? "No hay actividades para esta función sustantiva"
+                              : "No hay actividades extracurriculares registradas"}
                           </TableCell>
                         </TableRow>
+                      ) : (
+                        actividadesFiltradas.map((actividad, index) => (
+                          <TableRow key={actividad.id} className="hover:bg-gray-50">
+                            <TableCell className="font-medium">{index + 1}</TableCell>
+                            <TableCell>{actividad.codigo}</TableCell>
+                            <TableCell>{actividad.nombre}</TableCell>
+                            <TableCell>{getFuncionNombre(actividad.funcionSustantivaId)}</TableCell>
+                            <TableCell>{actividad.descripcion || "-"}</TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={actividad.estado === "activo" ? "default" : "secondary"}
+                                className={
+                                  actividad.estado === "activo"
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-gray-100 text-gray-800"
+                                }
+                              >
+                                {actividad.estado === "activo" ? "Activado" : "Desactivado"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleEdit(actividad)}
+                                  className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                                  disabled={loading}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleDelete(actividad.id)}
+                                  className="text-red-600 border-red-200 hover:bg-red-50"
+                                  disabled={loading}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
                       )}
                     </TableBody>
                   </Table>

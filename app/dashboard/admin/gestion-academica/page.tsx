@@ -121,10 +121,11 @@ export default function GestionAcademicaPage() {
       if (!response.ok) throw new Error(result.message || "Error al guardar la facultad.");
 
       toast({ title: "Éxito", description: `Facultad ${editingFacultadId ? 'actualizada' : 'creada'} correctamente.` });
-      fetchData();
-      handleNewFacultad();
+      handleNewFacultad(); // Limpiar campos
+      await fetchData();
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
+      handleNewFacultad(); // Limpiar campos en caso de error (duplicado)
     } finally {
       setSubmittingFacultad(false);
     }
@@ -136,7 +137,8 @@ export default function GestionAcademicaPage() {
         const response = await apiRequest(`/facultades/${id}`, { method: "DELETE" });
         if (!response.ok) throw new Error("No se pudo eliminar la facultad.");
         toast({ title: "Éxito", description: "Facultad eliminada." });
-        fetchData();
+        handleNewFacultad(); // Limpiar campos
+        await fetchData();
       } catch (error: any) {
         toast({ title: "Error", description: error.message, variant: "destructive" });
       }
@@ -170,10 +172,11 @@ export default function GestionAcademicaPage() {
         if (!response.ok) throw new Error(result.message || "Error al guardar la carrera.");
 
         toast({ title: "Éxito", description: `Carrera ${editingCarreraId ? 'actualizada' : 'creada'} correctamente.` });
-        fetchData();
-        handleNewCarrera();
+        handleNewCarrera(); // Limpiar campos
+        await fetchData();
     } catch (error: any) {
         toast({ title: "Error", description: error.message, variant: "destructive" });
+        handleNewCarrera(); // Limpiar campos en caso de error (duplicado)
     } finally {
         setSubmittingCarrera(false);
     }
@@ -185,7 +188,8 @@ export default function GestionAcademicaPage() {
             const response = await apiRequest(`/carreras/${id}`, { method: "DELETE" });
             if (!response.ok) throw new Error("No se pudo eliminar la carrera.");
             toast({ title: "Éxito", description: "Carrera eliminada." });
-            fetchData();
+            handleNewCarrera(); // Limpiar campos
+            await fetchData();
         } catch (error: any) {
             toast({ title: "Error", description: error.message, variant: "destructive" });
         }
@@ -245,8 +249,9 @@ export default function GestionAcademicaPage() {
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmitCarrera} className="grid md:grid-cols-2 gap-6">
-                    <div className="grid gap-2"><Label htmlFor="nombreCarrera">Nombre de la Carrera</Label><Input id="nombreCarrera" value={nombreCarrera} onChange={(e) => setNombreCarrera(e.target.value)} required /></div>
                     <div className="grid gap-2"><Label htmlFor="facultadCarrera">Facultad</Label><Select value={selectedFacultadId} onValueChange={setSelectedFacultadId} required><SelectTrigger><SelectValue placeholder="Seleccione una facultad" /></SelectTrigger><SelectContent>{facultades.map(f => (<SelectItem key={f.id} value={f.id.toString()}>{f.nombre}</SelectItem>))}</SelectContent></Select></div>
+                    <div className="grid gap-2"><Label htmlFor="nombreCarrera">Nombre de la Carrera</Label><Input id="nombreCarrera" value={nombreCarrera} onChange={(e) => setNombreCarrera(e.target.value)} required /></div>
+                    
                     <div className="md:col-span-2 flex gap-4">
                         <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700" disabled={submittingCarrera}>{submittingCarrera ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />GUARDANDO...</> : <><Save className="mr-2 h-4 w-4" />GUARDAR</>}</Button>
                         <Button type="button" onClick={handleNewCarrera} variant="outline"><Plus className="mr-2 h-4 w-4" />NUEVO</Button>

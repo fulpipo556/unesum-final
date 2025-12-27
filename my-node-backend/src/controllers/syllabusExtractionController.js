@@ -299,6 +299,10 @@ exports.extraerTitulosSyllabus = async (req, res) => {
     const TituloExtraidoSyllabus = db.TituloExtraidoSyllabus;
     const sessionId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const usuarioId = req.user?.id || null;
+    
+    // Obtener periodo académico del request
+    const periodoAcademico = req.body.periodo_academico || null;
+    const periodoId = req.body.periodo_id || null;
 
     try {
       const titulosGuardados = await Promise.all(
@@ -307,6 +311,8 @@ exports.extraerTitulosSyllabus = async (req, res) => {
             session_id: sessionId,
             nombre_archivo: archivo.originalname,
             tipo_archivo: tipoArchivo,
+            periodo_academico: periodoAcademico,
+            periodo_id: periodoId,
             titulo: titulo.titulo,
             tipo: titulo.tipo,
             fila: titulo.fila,
@@ -504,10 +510,12 @@ exports.listarSesionesSyllabus = async (req, res) => {
         nombre_archivo,
         tipo_archivo,
         usuario_id,
+        periodo_academico,
+        periodo_id,
         COUNT(*) as total_titulos,
         MAX(created_at) as fecha_extraccion
       FROM titulos_extraidos_syllabus
-      GROUP BY session_id, nombre_archivo, tipo_archivo, usuario_id
+      GROUP BY session_id, nombre_archivo, tipo_archivo, usuario_id, periodo_academico, periodo_id
       ORDER BY MAX(created_at) DESC
       LIMIT 50
     `, {
@@ -523,6 +531,56 @@ exports.listarSesionesSyllabus = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Error listando sesiones de Syllabus',
+      error: error.message
+    });
+  }
+};
+
+// 🗑️ ELIMINAR SESIÓN COMPLETA DE SYLLABUS
+exports.eliminarSesionSyllabus = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Se requiere sessionId'
+      });
+    }
+
+    const { sequelize } = db;
+    const TituloExtraidoSyllabus = db.TituloExtraidoSyllabus;
+    const AgrupacionTituloSyllabus = db.AgrupacionTituloSyllabus;
+
+    // Transacción para eliminar todo relacionado con la sesión
+    await sequelize.transaction(async (t) => {
+      // 1. Eliminar agrupaciones (pestañas organizadas)
+      const agrupacionesEliminadas = await AgrupacionTituloSyllabus.destroy({
+        where: { session_id: sessionId },
+        transaction: t
+      });
+
+      // 2. Eliminar títulos extraídos
+      const titulosEliminados = await TituloExtraidoSyllabus.destroy({
+        where: { session_id: sessionId },
+        transaction: t
+      });
+
+      console.log(`🗑️ [SYLLABUS DELETE] Sesión ${sessionId} eliminada:`);
+      console.log(`   - ${titulosEliminados} títulos eliminados`);
+      console.log(`   - ${agrupacionesEliminadas} agrupaciones eliminadas`);
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Sesión de Syllabus eliminada exitosamente'
+    });
+
+  } catch (error) {
+    console.error('❌ Error eliminando sesión Syllabus:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error eliminando sesión de Syllabus',
       error: error.message
     });
   }

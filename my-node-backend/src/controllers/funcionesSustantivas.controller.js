@@ -66,11 +66,20 @@ exports.create = async (req, res) => {
     }
     
     // Verificar si ya existe una función con el mismo código
-    const existente = await FuncionesSustantivas.findOne({ where: { codigo } });
-    if (existente) {
+    const existenteCodigo = await FuncionesSustantivas.findOne({ where: { codigo } });
+    if (existenteCodigo) {
       return res.status(400).json({
         success: false,
         message: `Ya existe una función sustantiva con el código ${codigo}`
+      });
+    }
+    
+    // Verificar si ya existe una función con el mismo nombre
+    const existenteNombre = await FuncionesSustantivas.findOne({ where: { nombre } });
+    if (existenteNombre) {
+      return res.status(400).json({
+        success: false,
+        message: `Ya existe una función sustantiva con el nombre "${nombre}"`
       });
     }
     
@@ -115,11 +124,22 @@ exports.update = async (req, res) => {
     
     // Si se cambia el código, verificar que no exista otro con ese código
     if (codigo && codigo !== funcion.codigo) {
-      const existente = await FuncionesSustantivas.findOne({ where: { codigo } });
-      if (existente) {
+      const existenteCodigo = await FuncionesSustantivas.findOne({ where: { codigo } });
+      if (existenteCodigo) {
         return res.status(400).json({
           success: false,
           message: `Ya existe otra función sustantiva con el código ${codigo}`
+        });
+      }
+    }
+    
+    // Si se cambia el nombre, verificar que no exista otro con ese nombre
+    if (nombre && nombre !== funcion.nombre) {
+      const existenteNombre = await FuncionesSustantivas.findOne({ where: { nombre } });
+      if (existenteNombre) {
+        return res.status(400).json({
+          success: false,
+          message: `Ya existe otra función sustantiva con el nombre "${nombre}"`
         });
       }
     }

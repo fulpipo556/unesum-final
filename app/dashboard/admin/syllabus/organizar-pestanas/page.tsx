@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { ArrowLeft, FileText, Settings, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, FileText, Settings, CheckCircle2, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/auth-context'
 import { OrganizadorPestanas } from '@/components/programa-analitico/organizador-pestanas'
@@ -131,6 +131,37 @@ export default function OrganizarPestanasSyllabusPage() {
   const handleGuardarExitoso = () => {
     setGuardadoExitoso(true)
     setTimeout(() => setGuardadoExitoso(false), 5000)
+  }
+
+  const eliminarSesion = async (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation() // Evitar que se abra la sesión al hacer clic en eliminar
+    
+    if (!confirm('¿Estás seguro de eliminar esta sesión de Syllabus? Se eliminarán todos los títulos y agrupaciones asociados.')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`http://localhost:4000/api/syllabus-extraction/sesion/${sessionId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        alert('✅ Sesión eliminada exitosamente')
+        // Recargar la lista de sesiones
+        cargarSesiones()
+      } else {
+        alert('❌ ' + (data.message || 'Error al eliminar sesión'))
+      }
+    } catch (error) {
+      console.error('Error eliminando sesión:', error)
+      alert('❌ Error al eliminar sesión')
+    }
   }
 
   return (
@@ -267,9 +298,19 @@ export default function OrganizarPestanasSyllabusPage() {
                             </div>
                           </CardDescription>
                         </div>
-                        <Button variant="outline" size="sm">
-                          Organizar →
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button variant="outline" size="sm">
+                            Organizar →
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={(e) => eliminarSesion(sesion.session_id, e)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     </CardHeader>
                   </Card>

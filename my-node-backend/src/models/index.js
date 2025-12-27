@@ -6,6 +6,7 @@ const User = require('./User');
 const Sustantivo = require('./Sustantivo');
 const initUsuario = require('./usuarios');
 const initFuncionesSustantivas = require('./funciones_sustantivas');
+const initActividades = require('./actividades');
 const initParalelo= require('./paralelo');
 const initNivel= require('./nivel');
 const initOrganizacion= require('./organizacion');
@@ -41,11 +42,13 @@ const initAgrupacionTitulo = require('./AgrupacionTitulo');
 // Modelos para Syllabus con pestañas
 const initTituloExtraidoSyllabus = require('./TituloExtraidoSyllabus');
 const initAgrupacionTituloSyllabus = require('./AgrupacionTituloSyllabus');
+const initSyllabusComisionAcademica = require('./SyllabusComisionAcademica');
 
 
 // Inicializa el modelo Usuario
 const Usuario = initUsuario(sequelize, Sequelize.DataTypes);
 const FuncionesSustantivas = initFuncionesSustantivas(sequelize, Sequelize.DataTypes); 
+const Actividades = initActividades(sequelize, Sequelize.DataTypes);
 const Paralelo = initParalelo(sequelize, Sequelize.DataTypes);
 const Nivel = initNivel(sequelize, Sequelize.DataTypes);
 const Organizacion = initOrganizacion(sequelize, Sequelize.DataTypes);
@@ -81,6 +84,7 @@ const AgrupacionTitulo = initAgrupacionTitulo(sequelize, Sequelize.DataTypes);
 // Modelos de Syllabus
 const TituloExtraidoSyllabus = initTituloExtraidoSyllabus(sequelize, Sequelize.DataTypes);
 const AgrupacionTituloSyllabus = initAgrupacionTituloSyllabus(sequelize, Sequelize.DataTypes);
+const SyllabusComisionAcademica = initSyllabusComisionAcademica(sequelize, Sequelize.DataTypes);
 
 
 // Definir relaciones
@@ -88,6 +92,10 @@ User.hasMany(Sustantivo, { foreignKey: 'usuario_id', as: 'sustantivos' });
 Sustantivo.belongsTo(User, { foreignKey: 'usuario_id', as: 'usuario' });
 
 ProgramasAnaliticos.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'creador' });
+
+// Relación entre Actividades y Funciones Sustantivas
+Actividades.belongsTo(FuncionesSustantivas, { foreignKey: 'funcion_sustantiva_id', as: 'funcionSustantiva' });
+FuncionesSustantivas.hasMany(Actividades, { foreignKey: 'funcion_sustantiva_id', as: 'actividades' });
 
 Facultad.hasMany(Carrera, { foreignKey: 'facultad_id', as: 'carreras' });
 Carrera.belongsTo(Facultad, { foreignKey: 'facultad_id', as: 'facultad' });
@@ -213,6 +221,7 @@ module.exports = {
   Nivel,
   Usuario,
   FuncionesSustantivas,
+  Actividades,
   ProgramasAnaliticos,
   Facultad,
   Carrera,
@@ -237,5 +246,6 @@ module.exports = {
   AgrupacionTitulo,
   // Modelos de Syllabus
   TituloExtraidoSyllabus,
-  AgrupacionTituloSyllabus
+  AgrupacionTituloSyllabus,
+  SyllabusComisionAcademica
 };

@@ -84,4 +84,11 @@ router.delete('/sesion-extraccion/:sessionId/agrupaciones',
   syllabusExtractionController.eliminarAgrupacionesSyllabus
 );
 
+// 🗑️ ELIMINAR SESIÓN COMPLETA DE SYLLABUS (solo administradores)
+router.delete('/sesion/:sessionId', 
+  authenticate,
+  authorize(['administrador']),
+  syllabusExtractionController.eliminarSesionSyllabus
+);
+
 module.exports = router;
