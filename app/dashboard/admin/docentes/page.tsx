@@ -523,7 +523,7 @@ export default function GestionDocentesPage() {
                     <div className="grid gap-2"><Label htmlFor="email">Correo Electrónico</Label><Input id="email" name="email" type="email" placeholder="juan.perez@universidad.edu" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} required /></div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="grid gap-2"><Label htmlFor="nivel">Nivel</Label><Select name="nivel" value={formData.nivel} onValueChange={(v) => handleSelectChange('nivel', v)}><SelectTrigger id="nivel"><SelectValue placeholder="Seleccione nivel" /></SelectTrigger><SelectContent>{niveles.map((n) => (<SelectItem key={n.id} value={n.id.toString()}>{n.nombre}</SelectItem>))}</SelectContent></Select></div>
-                        <div className="grid gap-2"><Label htmlFor="asignatura">Asignatura</Label><Select name="asignatura" value={formData.asignatura} onValueChange={(v) => handleSelectChange('asignatura', v)} required><SelectTrigger id="asignatura"><SelectValue placeholder="Seleccione asignatura" /></SelectTrigger><SelectContent>{asignaturasFiltradas.map((a) => (<SelectItem key={a.id} value={a.id.toString()}>{a.nombre} ({a.codigo})</SelectItem>))}</SelectContent></Select></div>
+                        <div className="grid gap-2"><Label htmlFor="asignatura">Asignatura</Label><Select name="asignatura" value={formData.asignatura} onValueChange={(v) => handleSelectChange('asignatura', v)} required><SelectTrigger id="asignatura"><SelectValue placeholder="Seleccione asignatura" /></SelectTrigger><SelectContent>{asignaturasFiltradas.map((a) => (<SelectItem key={a.id} value={a.id.toString()}>{a.nombre}</SelectItem>))}</SelectContent></Select></div>
                         <div className="grid gap-2"><Label htmlFor="paralelo">Paralelo</Label><Select name="paralelo" value={formData.paralelo} onValueChange={(v) => handleSelectChange('paralelo', v)}><SelectTrigger id="paralelo"><SelectValue placeholder="Seleccione paralelo" /></SelectTrigger><SelectContent>{paralelos.map((p) => (<SelectItem key={p.id} value={p.id.toString()}>{p.nombre}</SelectItem>))}</SelectContent></Select></div>
                     </div>
                     <div className="flex items-center space-x-4 rounded-md border p-4">
@@ -543,7 +543,17 @@ export default function GestionDocentesPage() {
               
               <CardContent>
                 <div className="overflow-x-auto">
-                  {loading ? (<div className="flex justify-center py-10"><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div>) : (
+                  {loading ? (
+                    <div className="flex justify-center py-10"><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div>
+                  ) : !filtros.carrera ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <div className="bg-gray-100 rounded-full p-4 mb-4">
+                        <UserPlus className="h-8 w-8 text-gray-400" />
+                      </div>
+                      <p className="text-gray-600 font-medium mb-2">Seleccione una carrera</p>
+                      <p className="text-sm text-gray-500">Por favor, seleccione una carrera en los filtros para ver los docentes registrados.</p>
+                    </div>
+                  ) : (
                     <Table>
                       <TableHeader><TableRow className="bg-gray-50"><TableHead>N.</TableHead><TableHead>Docente</TableHead><TableHead>Carrera</TableHead><TableHead>Asignatura</TableHead><TableHead>Nivel</TableHead><TableHead>Paralelo</TableHead><TableHead>Estado</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader>
                       <TableBody>
@@ -557,10 +567,7 @@ export default function GestionDocentesPage() {
                             <TableCell>{profesor.carrera?.nombre || "N/A"}</TableCell>
                             <TableCell>
                               {profesor.asignatura ? (
-                                <div>
-                                  <div className="font-medium">{profesor.asignatura.nombre}</div>
-                                  <div className="text-xs text-muted-foreground">{profesor.asignatura.codigo}</div>
-                                </div>
+                                <div className="font-medium">{profesor.asignatura.nombre}</div>
                               ) : <span className="text-muted-foreground">No asignado</span>}
                             </TableCell>
                             <TableCell>{profesor.nivel?.nombre || <span className="text-muted-foreground">No asignado</span>}</TableCell>
@@ -574,9 +581,9 @@ export default function GestionDocentesPage() {
                             </TableCell>
                           </TableRow>
                         ))}
-                        {profesoresFiltrados.length === 0 && !loading && (
+                        {profesoresFiltrados.length === 0 && (
                           <TableRow><TableCell colSpan={8} className="text-center py-8 text-gray-500">
-                            {profesores.length === 0 ? "No hay docentes registrados." : "No se encontraron docentes con los filtros seleccionados."}
+                            No se encontraron docentes para esta carrera.
                           </TableCell></TableRow>
                         )}
                       </TableBody>

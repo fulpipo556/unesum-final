@@ -12,17 +12,17 @@ exports.create = async (req, res) => {
     const { nombre, periodo, materias, datos_syllabus } = req.body;
     const usuario_id = req.user.id; 
 
-    if (!nombre || !periodo || !materias || !datos_syllabus) {
+    if (!nombre || !periodo || !datos_syllabus) {
       return res.status(400).json({
         success: false,
-        message: 'Los campos nombre, periodo, materias y datos_syllabus son obligatorios'
+        message: 'Los campos nombre, periodo y datos_syllabus son obligatorios'
       });
     }
     
     const nuevoSyllabus = await Syllabus.create({
       nombre,
       periodo,
-      materias,
+      materias: materias || nombre,
       datos_syllabus,
       usuario_id
     });
@@ -46,7 +46,7 @@ exports.create = async (req, res) => {
 exports.getAll = async (req, res) => {
   try {
     const syllabi = await Syllabus.findAll({
-      order: [['updated_at', 'DESC']],
+      order: [['updatedAt', 'DESC']],
       include: {
         model: Usuario,
         as: 'creador',

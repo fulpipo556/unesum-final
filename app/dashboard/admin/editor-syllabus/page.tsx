@@ -10,58 +10,119 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Minus, Upload, Save, Merge, Trash2, Printer } from "lucide-react"
+import { Plus, Minus, Upload, Save, Merge, Trash2, Printer, X, Pencil, Check, ArrowUpFromLine, Copy, FileText } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import * as mammoth from "mammoth"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 
 // --- INTERFACES DE DATOS ---
-interface TableCell { id: string; content: string; isHeader: boolean; rowSpan: number; colSpan: number; isEditable: boolean; backgroundColor?: string; textColor?: string; fontSize?: string; fontWeight?: string; textAlign?: string; }
+interface TableCell { 
+  id: string; 
+  content: string; 
+  isHeader: boolean; 
+  rowSpan: number; 
+  colSpan: number; 
+  isEditable: boolean; 
+  backgroundColor?: string; 
+  textColor?: string; 
+  fontSize?: string; 
+  fontWeight?: string; 
+  textAlign?: string;
+  textOrientation?: 'horizontal' | 'vertical'; 
+}
+
 interface TableRow { id: string; cells: TableCell[]; }
-interface SyllabusData { id: string | number; name: string; description: string; rows: TableRow[]; metadata: { subject: string; period: string; level: string; createdAt: string; updatedAt: string; }; }
-// Interfaz para el registro completo que viene del backend
+interface TabData { id: string; title: string; rows: TableRow[]; }
+interface SyllabusData { id: string | number; name: string; description: string; tabs: TabData[]; metadata: { subject?: string; period?: string; level?: string; createdAt: string; updatedAt: string; }; }
 interface SavedSyllabusRecord { id: number; nombre: string; periodo: string; materias: string; datos_syllabus: SyllabusData; created_at: string; updated_at: string; }
 
 export default function EditorSyllabusPage() {
-  // --- ESTADOS Y HOOKS ---
   const { token, getToken } = useAuth()
+  
+  // --- ESTADOS ---
   const [syllabi, setSyllabi] = useState<SyllabusData[]>([])
   const [activeSyllabusId, setActiveSyllabusId] = useState<string | number | null>(null)
+  const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [savedSyllabi, setSavedSyllabi] = useState<SavedSyllabusRecord[]>([])
+  const [periodos, setPeriodos] = useState<any[]>([])
+  const [selectedPeriod, setSelectedPeriod] = useState<string>("")
+  const [showSyllabusSelector, setShowSyllabusSelector] = useState(false)
+  
+  const [editingTabId, setEditingTabId] = useState<string | null>(null)
+  const [tempTabTitle, setTempTabTitle] = useState("")
+
   const [isListLoading, setIsListLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  
   const [selectedCells, setSelectedCells] = useState<string[]>([])
   const [editingCell, setEditingCell] = useState<string | null>(null)
   const [editContent, setEditContent] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
+  
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // --- DATOS DERIVADOS ---
-  const activeSyllabus = syllabi.find((s) => s.id === activeSyllabusId)
-  const tableData = activeSyllabus ? activeSyllabus.rows : []
-  
-  // --- EFECTO PARA CARGAR DATOS INICIALES ---
-  useEffect(() => {
-    const fetchSyllabi = async () => {
-      try {
-        const result = await apiRequest("/api/syllabi");
-        setSavedSyllabi(result.data);
-      } catch (error) {
-        console.error("Error al cargar la lista de syllabi:", error);
-      } finally {
-        setIsListLoading(false);
-      }
-    };
-    fetchSyllabi();
-  }, []);
+  const activeSyllabus = syllabi.find((s) => s.id === activeSyllabusId);
+  const activeTab = activeSyllabus?.tabs.find(t => t.id === activeTabId);
+  const tableData = activeTab ? activeTab.rows : [];
 
-  // --- LÓGICA DE COMUNICACIÓN CON EL BACKEND ---
+  // --- CARGA INICIAL ---
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [syllabiData, periodosData] = await Promise.all([
+          apiRequest("/api/syllabi").catch(err => {
+            console.error("Error en /api/syllabi:", err);
+            return { data: [] };
+          }),
+          apiRequest("/api/periodo").catch(err => {
+            console.error("Error en /api/periodo:", err);
+            return { data: [] };
+          })
+        ]);
+        
+        const syllabiArray = Array.isArray(syllabiData?.data) ? syllabiData.data : (Array.isArray(syllabiData) ? syllabiData : []);
+        const periodosArray = Array.isArray(periodosData?.data) ? periodosData.data : (Array.isArray(periodosData) ? periodosData : []);
+        
+        setSavedSyllabi(syllabiArray);
+        setPeriodos(periodosArray);
+        
+        console.log('✅ Datos cargados:', {
+          syllabi: syllabiArray.length,
+          periodos: periodosArray.length,
+          periodosData: periodosArray
+        });
+      } catch (error) { 
+        console.error("❌ Error al cargar datos:", error); 
+      }
+      finally { setIsListLoading(false); }
+    };
+    fetchData();
+  }, []);
+  
+  useEffect(() => {
+    if (activeSyllabus && activeSyllabus.tabs.length > 0) {
+      if (!activeSyllabus.tabs.find(t => t.id === activeTabId)) {
+        setActiveTabId(activeSyllabus.tabs[0].id);
+      }
+    } else {
+      setActiveTabId(null);
+    }
+  }, [activeSyllabus, activeTabId]);
+
+  // --- API ---
   const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
-    const fullUrl = `${process.env.NEXT_PUBLIC_API_URL}${endpoint}`
+    const fullUrl = `http://localhost:4000${endpoint}`
     const currentToken = token || getToken()
     const headers = { "Content-Type": "application/json", Authorization: `Bearer ${currentToken}`, ...options.headers }
     const response = await fetch(fullUrl, { ...options, headers })
+    
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("El servidor no devolvió JSON.");
+    }
+
     const data = await response.json()
     if (!response.ok) throw new Error(data.message || "Error en la petición al API.")
     return data
@@ -69,28 +130,68 @@ export default function EditorSyllabusPage() {
 
   const handleSaveToDB = async () => {
     if (!activeSyllabus) return alert("No hay un syllabus activo para guardar.")
+    if (!selectedPeriod) return alert("Por favor, seleccione un periodo antes de guardar.")
+    
     setIsSaving(true)
     try {
+      const datosParaGuardar = {
+        version: "2.0",
+        metadata: activeSyllabus.metadata,
+        tabs: activeSyllabus.tabs.map(tab => ({
+          id: tab.id,
+          title: tab.title,
+          rows: tab.rows.map(row => ({
+            id: row.id,
+            cells: row.cells.map(cell => ({
+              ...cell,
+              styles: {
+                ...(cell.backgroundColor ? { backgroundColor: cell.backgroundColor } : {}),
+                ...(cell.textColor ? { textColor: cell.textColor } : {}),
+                ...(cell.textAlign ? { textAlign: cell.textAlign } : {}),
+                ...(cell.textOrientation ? { textOrientation: cell.textOrientation } : {})
+              }
+            }))
+          }))
+        }))
+      };
+
       const payload = {
-        nombre: activeSyllabus.name,
-        periodo: activeSyllabus.metadata.period,
-        materias: activeSyllabus.metadata.subject,
-        datos_syllabus: activeSyllabus
+        nombre: activeSyllabus.name || 'Syllabus',
+        periodo: selectedPeriod,
+        materias: activeSyllabus.name || 'Syllabus',
+        datos_syllabus: datosParaGuardar
       }
+      
       const isUpdate = typeof activeSyllabus.id === "number"
       const endpoint = isUpdate ? `/api/syllabi/${activeSyllabus.id}` : "/api/syllabi"
       const method = isUpdate ? "PUT" : "POST"
 
       const result = await apiRequest(endpoint, { method, body: JSON.stringify(payload) })
-      
       const savedRecord = result.data as SavedSyllabusRecord;
+      
       const savedUIData = savedRecord.datos_syllabus;
       savedUIData.id = savedRecord.id;
+      
+      if (savedUIData.tabs) {
+          savedUIData.tabs = savedUIData.tabs.map((t: any) => ({
+              ...t,
+              rows: t.rows.map((r: any) => ({
+                  ...r,
+                  cells: r.cells.map((c: any) => ({
+                      ...c,
+                      backgroundColor: c.styles?.backgroundColor,
+                      textColor: c.styles?.textColor,
+                      textAlign: c.styles?.textAlign,
+                      textOrientation: c.styles?.textOrientation,
+                      isEditable: true
+                  }))
+              }))
+          }));
+      }
 
       setSyllabi((prev) => prev.map((s) => (s.id === activeSyllabusId ? savedUIData : s)))
       setActiveSyllabusId(savedUIData.id)
       
-      // Actualiza la lista de syllabi guardados dinámicamente
       if (isUpdate) {
         setSavedSyllabi(prev => prev.map(s => s.id === savedRecord.id ? savedRecord : s));
       } else {
@@ -105,8 +206,7 @@ export default function EditorSyllabusPage() {
       setIsSaving(false)
     }
   }
-  
-  // --- MANIPULACIÓN DEL ESTADO ---
+
   const updateSyllabus = (id: string | number, updates: Partial<SyllabusData>) => {
     setSyllabi(p => p.map(s => s.id === id ? { ...s, ...updates, metadata: { ...s.metadata, ...(updates.metadata || {}), updatedAt: new Date().toISOString() } } : s))
   }
@@ -118,262 +218,710 @@ export default function EditorSyllabusPage() {
   };
 
   const handleLoadSyllabus = (syllabusId: string) => {
-    if (!syllabusId) return;
+    console.log("🔍 handleLoadSyllabus - ID recibido:", syllabusId);
+    console.log("📚 savedSyllabi disponibles:", savedSyllabi.length);
+    
+    if (!syllabusId) {
+      console.error("❌ No se proporcionó syllabusId");
+      return;
+    }
+    
     const id = parseInt(syllabusId, 10);
-    const syllabusToLoad = savedSyllabi.find(s => s.id === id);
+    console.log("🔢 ID parseado:", id);
+    
+    // Comparar convirtiendo ambos a número
+    const syllabusToLoad = savedSyllabi.find(s => Number(s.id) === id);
+    console.log("📖 Syllabus encontrado:", syllabusToLoad ? "SÍ" : "NO");
+    
     if (syllabusToLoad) {
+      console.log("✅ Cargando syllabus:", syllabusToLoad.nombre);
       const editorData = syllabusToLoad.datos_syllabus;
       editorData.id = syllabusToLoad.id;
+      if (!editorData.tabs || editorData.tabs.length === 0) {
+         editorData.tabs = [{ id: `tab-${Date.now()}`, title: "General", rows: (editorData as any).rows || [] }];
+      }
       setSyllabi([editorData]);
       setActiveSyllabusId(editorData.id);
+      setActiveTabId(editorData.tabs[0]?.id || null);
+      
+      // Establecer el periodo seleccionado
+      setSelectedPeriod(syllabusToLoad.periodo);
+      console.log("✅ Syllabus cargado exitosamente, periodo:", syllabusToLoad.periodo);
+    } else {
+      console.error("❌ No se encontró el syllabus con ID:", id);
+      console.log("📋 IDs disponibles:", savedSyllabi.map(s => s.id));
     }
   };
 
-  // --- LÓGICA DE IMPORTACIÓN DE SYLLABUS ---
+  // --- IMPORTACIÓN MAESTRA V8: HEURÍSTICA DE ESTRUCTURA Y VERTICALIDAD ---
   const handleSyllabusUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file || !file.name.endsWith(".docx")) return alert("Por favor, sube un archivo de Word (.docx).")
-    setIsLoading(true)
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (fileInputRef.current) fileInputRef.current.value = ""; 
+
+    setIsLoading(true);
     try {
-      const { value: html } = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() })
-      const doc = new DOMParser().parseFromString(html, "text/html")
-      const findValue = (k: string) => Array.from(doc.querySelectorAll("p, td, th")).find(n => n.textContent?.includes(k))?.textContent?.split(k)[1]?.trim().replace(":", "").trim() || ""
-      const meta = { subject: findValue("Nombre de la asignatura"), period: findValue("Periodo académico ordinario (PAO)"), level: findValue("Nivel") }
-      const tables = Array.from(doc.querySelectorAll("table"))
-      if (tables.length === 0) return alert("No se encontraron tablas en el documento.")
-      const rows: TableRow[] = tables.flatMap(t => Array.from(t.querySelectorAll("tr")).map((tr, rIdx) => ({ id: `row-${rIdx}-${Date.now()}`, cells: Array.from(tr.querySelectorAll("td, th")).map((td, cIdx) => ({ id: `cell-${rIdx}-${cIdx}-${Date.now()}`, content: td.textContent?.trim() || "", isHeader: td.tagName === "TH" || !!td.querySelector("strong, b"), rowSpan: parseInt(td.getAttribute("rowspan") || "1"), colSpan: parseInt(td.getAttribute("colspan") || "1"), isEditable: true }))})))
-      const newData: SyllabusData = { id: `syllabus-${Date.now()}`, name: meta.subject || `Syllabus de ${file.name}`, description: "Syllabus importado", metadata: { ...meta, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, rows }
-      setSyllabi([newData]); setActiveSyllabusId(newData.id);
-    } catch (e) { console.error("Error al procesar el archivo:", e); alert("Ocurrió un error al procesar el Syllabus.") } finally { setIsLoading(false); if (fileInputRef.current) fileInputRef.current.value = "" }
+      const { value: html } = await mammoth.convertToHtml(
+        { arrayBuffer: await file.arrayBuffer() },
+        { 
+          styleMap: [
+            "p[style-name='Heading 1'] => h1:fresh",
+            "p[style-name='Heading 2'] => h2:fresh",
+            "p[style-name='Title'] => h1:fresh",
+            "b => strong",
+            // Forzar detección de celdas de encabezado si el word tiene estilo "Header"
+            "table.header => thead" 
+          ]
+        }
+      );
+
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const findValue = (k: string) => Array.from(doc.querySelectorAll("p, td, th"))
+        .find(n => n.textContent?.includes(k))?.textContent?.split(k)[1]?.trim().replace(/^[:\s]+/, "") || "";
+      
+      const meta = { 
+        subject: findValue("Nombre de la asignatura") || findValue("Materia") || "", 
+        period: findValue("Periodo") || "", level: findValue("Nivel") || "" 
+      };
+
+      console.log("--- INICIANDO ESCANEO AVANZADO ---");
+      
+      const newTabs: TabData[] = [];
+      let currentSectionTitle = "Sección 1"; 
+      let hasAssignedTableToTitle = true; 
+
+      const elements = Array.from(doc.body.children);
+
+      elements.forEach((element, idx) => {
+        const tagName = element.tagName;
+        const text = element.textContent?.replace(/\n/g, " ").replace(/\s+/g, " ").trim() || "";
+        const textUpper = text.toUpperCase();
+
+        // 1. SI ES TABLA
+        if (tagName === "TABLE") {
+             const rowsRaw = Array.from(element.querySelectorAll("tr"));
+             const tableContent = rowsRaw.map(r => r.textContent).join(" ").toUpperCase();
+             // Filtro de tablas basura
+             const isJunkTable = (tableContent.includes("UNIVERSIDAD") || tableContent.includes("SYLLABUS")) && rowsRaw.length < 6;
+
+             if (isJunkTable) return; 
+             
+             // --- LÓGICA DE DETECCIÓN DE ESTRUCTURA ---
+             const rows: TableRow[] = rowsRaw.map((tr, rIdx) => ({
+                id: `row-${newTabs.length}-${rIdx}-${Date.now()}`,
+                cells: Array.from(tr.querySelectorAll("td, th")).map((td, cIdx) => {
+                  const content = td.textContent?.trim() || "";
+                  const contentUpper = content.toUpperCase();
+                  
+                  // DETECCIÓN DE ENCABEZADO
+                  // En tablas complejas (como la imagen), las primeras filas suelen ser encabezados
+                  const hasBold = !!td.querySelector("strong, b");
+                  // Consideramos header si está en negrita, es <th> o está en las primeras 2 filas de una tabla compleja
+                  const isHeader = td.tagName === "TH" || hasBold || (rowsRaw.length > 3 && rIdx <= 1);
+
+                  // DETECCIÓN DE VERTICAL (PALABRAS CLAVE)
+                  // Solo estas palabras EXACTAS deben ser verticales
+                  const verticalKeywords = ["PRESENCIAL", "SINCRÓNICA", "SINCRONICA", "PFAE", "TA"];
+                  
+                  let guessVertical = false;
+                  // Comparación exacta: solo si el contenido ES exactamente una de estas palabras
+                  if (isHeader) {
+                      const contentTrimmed = contentUpper.trim();
+                      guessVertical = verticalKeywords.includes(contentTrimmed);
+                  }
+                  return {
+                    id: `cell-${newTabs.length}-${rIdx}-${cIdx}-${Date.now()}`,
+                    content: content,
+                    isHeader: isHeader, 
+                    rowSpan: parseInt(td.getAttribute("rowspan") || "1"),
+                    colSpan: parseInt(td.getAttribute("colspan") || "1"),
+                    isEditable: true,
+                    textOrientation: guessVertical ? 'vertical' : 'horizontal' 
+                  };
+                }),
+              }));
+
+             if (rows.length > 0) {
+                 newTabs.push({ id: `tab-${newTabs.length}-${Date.now()}`, title: currentSectionTitle, rows: rows });
+                 hasAssignedTableToTitle = true; 
+             }
+             return;
+        }
+
+        // 2. SI ES TEXTO
+        const isIgnored = text.length < 3 || textUpper.includes("UNIVERSIDAD") || textUpper.includes("SYLLABUS") || tagName === "IMG";
+
+        if (!isIgnored) {
+            const startsWithNumber = /^\d/.test(text); 
+            const isHeaderTag = ['H1','H2','H3','H4'].includes(tagName);
+            const isList = tagName === "UL" || tagName === "OL";
+            const isUppercaseTitle = (text === textUpper) && text.length < 100;
+            const hasBold = !!element.querySelector('strong') || !!element.querySelector('b');
+
+            let isNewTitle = startsWithNumber || isHeaderTag || isList || isUppercaseTitle || hasBold;
+
+            if (!hasAssignedTableToTitle && isNewTitle) {
+                if (!startsWithNumber && !isHeaderTag && !isList) {
+                    isNewTitle = false;
+                }
+            }
+
+            if (isNewTitle) {
+                let cleanTitle = text.replace(/[:]+$/, '');
+                if (isList) cleanTitle = element.querySelector("li")?.textContent?.trim().replace(/[:]+$/, '') || cleanTitle;
+                
+                currentSectionTitle = cleanTitle;
+                hasAssignedTableToTitle = false; 
+            } else if (!hasAssignedTableToTitle && text.length > 0) {
+                const fakeRow: TableRow = {
+                    id: `row-fake-${Date.now()}`,
+                    cells: [{
+                        id: `cell-fake-${Date.now()}`,
+                        content: text, 
+                        isHeader: false,
+                        rowSpan: 1,
+                        colSpan: 1,
+                        isEditable: true,
+                        textOrientation: 'horizontal'
+                    }]
+                };
+                newTabs.push({ id: `tab-${newTabs.length}-${Date.now()}`, title: currentSectionTitle, rows: [fakeRow] });
+                hasAssignedTableToTitle = true; 
+            }
+        }
+      });
+
+      if (newTabs.length === 0) {
+        setIsLoading(false);
+        return alert("No se encontraron datos válidos.");
+      }
+
+      const newData: SyllabusData = {
+        id: `syllabus-${Date.now()}`,
+        name: meta.subject || `Syllabus de ${file.name}`,
+        description: "Importado",
+        metadata: { ...meta, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        tabs: newTabs,
+      };
+      
+      setSyllabi([newData]);
+      setActiveSyllabusId(newData.id);
+      setActiveTabId(newTabs[0]?.id || null);
+
+    } catch (e) { console.error(e); alert("Error crítico."); } 
+    finally { setIsLoading(false); }
+  };
+
+  // --- MÉTODOS DE EDICIÓN ---
+  const handleUpdateActiveTabRows = (newRows: TableRow[]) => {
+    if (!activeSyllabus || !activeTabId) return;
+    const updatedTabs = activeSyllabus.tabs.map(tab => tab.id === activeTabId ? { ...tab, rows: newRows } : tab);
+    updateSyllabus(activeSyllabus.id, { tabs: updatedTabs });
+  };
+
+  const startRenamingTab = (tab: TabData) => {
+    setEditingTabId(tab.id);
+    setTempTabTitle(tab.title);
   }
 
-  // --- LÓGICA DE EDICIÓN DE TABLA Y CELDAS ---
+  const saveTabRename = () => {
+    if (!activeSyllabus || !editingTabId) return;
+    const updatedTabs = activeSyllabus.tabs.map(tab => tab.id === editingTabId ? { ...tab, title: tempTabTitle || "Sin Título" } : tab);
+    updateSyllabus(activeSyllabus.id, { tabs: updatedTabs });
+    setEditingTabId(null);
+  }
+
+  const addTab = () => {
+    if (!activeSyllabus) return;
+    const newTab: TabData = {
+      id: `tab-${Date.now()}`,
+      title: `Nueva Sección`,
+      rows: [
+        { id: `r1-${Date.now()}`, cells: [{id: `c11-${Date.now()}`, content: "", isHeader: false, rowSpan:1, colSpan:1, isEditable:true}, {id: `c12-${Date.now()}`, content: "", isHeader: false, rowSpan:1, colSpan:1, isEditable:true}] },
+      ]
+    };
+    const updatedTabs = [...activeSyllabus.tabs, newTab];
+    updateSyllabus(activeSyllabus.id, { tabs: updatedTabs });
+    setActiveTabId(newTab.id);
+  };
+  
+  const removeTab = (tabIdToRemove: string) => {
+    if (!activeSyllabus) return;
+    if (activeSyllabus.tabs.length <= 1) return alert("Debe quedar al menos una sección.");
+    if (!window.confirm("¿Estás seguro de eliminar esta sección?")) return;
+    const updatedTabs = activeSyllabus.tabs.filter(t => t.id !== tabIdToRemove);
+    updateSyllabus(activeSyllabus.id, { tabs: updatedTabs });
+    if (activeTabId === tabIdToRemove) setActiveTabId(updatedTabs[0]?.id || null);
+  };
+
   const findCellPosition = (id: string): {rowIndex: number, colIndex: number} | null => { if (!tableData) return null; for(let r=0;r<tableData.length;r++){ const c=tableData[r].cells.findIndex(cell=>cell.id===id); if(c!==-1)return{rowIndex: r, colIndex: c}} return null }
   const startEditing = (id: string, content: string) => { setEditingCell(id); setEditContent(content) }
-  const saveEdit = () => { if(editingCell&&activeSyllabus){ const updated=tableData.map(row=>({...row,cells:row.cells.map(c=>(c.id===editingCell?{...c,content:editContent}:c))})); updateSyllabus(activeSyllabus.id,{rows:updated});setEditingCell(null);setEditContent("")}}
+  const saveEdit = () => { if(editingCell){ const updated=tableData.map(row=>({...row,cells:row.cells.map(c=>(c.id===editingCell?{...c,content:editContent}:c))})); handleUpdateActiveTabRows(updated); setEditingCell(null);setEditContent("")}}
   const cancelEdit = () => { setEditingCell(null); setEditContent("") }
   const handleCellClick = (id: string, e: React.MouseEvent) => { e.ctrlKey||e.metaKey ? setSelectedCells(p => p.includes(id)?p.filter(i=>i!==id):[...p,id]) : setSelectedCells([id]) }
   
-  const addRowAt=(idx:number)=>{if(!activeSyllabus||!tableData||!tableData.length)return;const rId=`r-${Date.now()}`,nCols=tableData[0].cells.reduce((a,c)=>a+c.colSpan,0);const nR:TableRow={id:rId,cells:Array.from({length:nCols},(_,i)=>({id:`c-${rId}-${i}`,content:"",isHeader:!1,rowSpan:1,colSpan:1,isEditable:!0}))};const nRows=[...tableData];nRows.splice(idx,0,nR);updateSyllabus(activeSyllabus.id,{rows:nRows})}
-  const addColumnAt=(idx:number)=>{if(!activeSyllabus)return;const updated=tableData.map(r=>{const nC:TableCell={id:`c-${r.id}-${Date.now()}`,content:"",isHeader:!1,rowSpan:1,colSpan:1,isEditable:!0};const nCells=[...r.cells];nCells.splice(idx,0,nC);return{...r,cells:nCells}});updateSyllabus(activeSyllabus.id,{rows:updated})}
+  const addRowAt=(idx:number)=>{if(!tableData.length)return;const rId=`r-${Date.now()}`,nCols=tableData[0].cells.reduce((a,c)=>a+c.colSpan,0);const nR:TableRow={id:rId,cells:Array.from({length:nCols},(_,i)=>({id:`c-${rId}-${i}`,content:"",isHeader:!1,rowSpan:1,colSpan:1,isEditable:!0}))};const nRows=[...tableData];nRows.splice(idx,0,nR);handleUpdateActiveTabRows(nRows)}
+  const addColumnAt=(idx:number)=>{const updated=tableData.map(r=>{const nC:TableCell={id:`c-${r.id}-${Date.now()}`,content:"",isHeader:!1,rowSpan:1,colSpan:1,isEditable:!0};const nCells=[...r.cells];nCells.splice(idx,0,nC);return{...r,cells:nCells}});handleUpdateActiveTabRows(updated)}
   
-  const handleInsertRow = (direction: "above" | "below") => {
-    if (selectedCells.length === 0) return alert("Por favor, selecciona una celda de referencia.");
-    const pos = findCellPosition(selectedCells[0]);
-    if (pos) {
-      addRowAt(direction === "above" ? pos.rowIndex : pos.rowIndex + 1);
-    }
-  }
-
-  const handleInsertColumn = (direction: "left" | "right") => {
-    if (selectedCells.length === 0) return alert("Por favor, selecciona una celda de referencia.");
-    const pos = findCellPosition(selectedCells[0]);
-    if (pos) {
-      addColumnAt(direction === "left" ? pos.colIndex : pos.colIndex + 1);
-    }
-  }
-
-  const removeSelectedRow = () => {
-    if (selectedCells.length === 0) return alert("Por favor, selecciona una celda en la fila a eliminar.");
-    if (!activeSyllabus || tableData.length <= 1) return alert("No se puede eliminar la única fila.");
-    const pos = findCellPosition(selectedCells[0]);
-    if (pos) {
-      const updated = tableData.filter((_, i) => i !== pos.rowIndex);
-      updateSyllabus(activeSyllabus.id, { rows: updated });
-      setSelectedCells([]);
-    }
-  }
-
-  const removeSelectedColumn = () => {
-    if (selectedCells.length === 0) return alert("Por favor, selecciona una celda en la columna a eliminar.");
-    if (!activeSyllabus || (tableData.length > 0 && tableData[0].cells.length <= 1)) return alert("No se puede eliminar la única columna.");
-    const pos = findCellPosition(selectedCells[0]);
-    if (pos) {
-      const updated = tableData.map(r => ({ ...r, cells: r.cells.filter((_, i) => i !== pos.colIndex) }));
-      updateSyllabus(activeSyllabus.id, { rows: updated });
-      setSelectedCells([]);
-    }
-  }
-
-  const clearSelectedCells=()=>{if(!selectedCells.length||!activeSyllabus)return;const updated=tableData.map(r=>({...r,cells:r.cells.map(c=>selectedCells.includes(c.id)?{...c,content:""}:c)}));updateSyllabus(activeSyllabus.id,{rows:updated});setSelectedCells([])}
+  const handleInsertRow = (direction: "above" | "below") => { const pos = findCellPosition(selectedCells[0]); if(pos) addRowAt(direction === 'above' ? pos.rowIndex : pos.rowIndex + 1); }
+  const handleInsertColumn = (direction: "left" | "right") => { const pos = findCellPosition(selectedCells[0]); if(pos) addColumnAt(direction === 'left' ? pos.colIndex : pos.colIndex + 1); }
+  const removeSelectedRow = () => { const pos = findCellPosition(selectedCells[0]); if (pos) { const updated = tableData.filter((_, i) => i !== pos.rowIndex); handleUpdateActiveTabRows(updated); setSelectedCells([]); } }
+  const removeSelectedColumn = () => { const pos = findCellPosition(selectedCells[0]); if (pos) { const updated = tableData.map(r => ({ ...r, cells: r.cells.filter((_, i) => i !== pos.colIndex) })); handleUpdateActiveTabRows(updated); setSelectedCells([]); } }
+  const clearSelectedCells=()=>{ const updated=tableData.map(r=>({...r,cells:r.cells.map(c=>selectedCells.includes(c.id)?{...c,content:""}:c)})); handleUpdateActiveTabRows(updated); setSelectedCells([]) }
   
-    const mergeCells = () => {
-    if (selectedCells.length < 2 || !activeSyllabus) {
-      alert("Selecciona al menos dos celdas para combinar.");
-      return;
-    }
-
-    let positionOfFirstCell: { rowIndex: number; colIndex: number } | null = null;
-    let minRow = Infinity, maxRow = -1, minCol = Infinity, maxCol = -1;
-    let contentToMerge: string[] = [];
-
-    // Itera para encontrar los límites y la primera celda
-    for (let rowIndex = 0; rowIndex < tableData.length; rowIndex++) {
-      for (let colIndex = 0; colIndex < tableData[rowIndex].cells.length; colIndex++) {
-        const cell = tableData[rowIndex].cells[colIndex];
+  const toggleVerticalText = () => {
+    if (selectedCells.length === 0) return;
+    const updated = tableData.map(row => ({
+      ...row,
+      cells: row.cells.map(cell => {
         if (selectedCells.includes(cell.id)) {
-          if (!positionOfFirstCell) {
-            positionOfFirstCell = { rowIndex, colIndex };
-          }
-          minRow = Math.min(minRow, rowIndex);
-          maxRow = Math.max(maxRow, rowIndex + cell.rowSpan - 1);
-          minCol = Math.min(minCol, colIndex);
-          maxCol = Math.max(maxCol, colIndex + cell.colSpan - 1);
-          if (cell.content) {
-            contentToMerge.push(cell.content);
-          }
+          const newOrientation: 'horizontal' | 'vertical' = cell.textOrientation === 'vertical' ? 'horizontal' : 'vertical';
+          return { ...cell, textOrientation: newOrientation }
+        }
+        return cell;
+      })
+    }));
+    handleUpdateActiveTabRows(updated);
+  };
+
+  const mergeCells = () => {
+    if (selectedCells.length < 2 || !activeTab) return alert("Selecciona 2+ celdas.");
+    let posFirst=null, minR=Infinity, maxR=-1, minC=Infinity, maxC=-1, content=[];
+    for(let r=0;r<tableData.length;r++){
+      for(let c=0;c<tableData[r].cells.length;c++){
+        const cell=tableData[r].cells[c];
+        if(selectedCells.includes(cell.id)){
+          if(!posFirst) posFirst={rowIndex:r, colIndex:c};
+          minR=Math.min(minR,r); maxR=Math.max(maxR,r+cell.rowSpan-1);
+          minC=Math.min(minC,c); maxC=Math.max(maxC,c+cell.colSpan-1);
+          if(cell.content) content.push(cell.content);
         }
       }
     }
-
-    // El bloque `if` ahora es a prueba de errores de TypeScript
-    if (positionOfFirstCell) {
-      // Al desestructurar aquí, TypeScript sabe que rowIndex y colIndex son números.
-      const { rowIndex, colIndex } = positionOfFirstCell;
-      const firstCellId = tableData[rowIndex].cells[colIndex].id;
-      const newRowSpan = maxRow - minRow + 1;
-      const newColSpan = maxCol - minCol + 1;
-
-      const updatedRows = tableData.map((row) => ({
-        ...row,
-        cells: row.cells.map((cell) => {
-          if (cell.id === firstCellId) {
-            return { ...cell, rowSpan: newRowSpan, colSpan: newColSpan, content: contentToMerge.join("\n") };
-          }
-          // Oculta las otras celdas que fueron parte de la combinación
-          if (selectedCells.includes(cell.id)) {
-            return { ...cell, rowSpan: 0, colSpan: 0 }; 
-          }
-          return cell;
-        }),
-      }));
-
-      updateSyllabus(activeSyllabus.id, { rows: updatedRows });
-      setSelectedCells([firstCellId]);
-    } else {
-      console.error("Error al combinar: No se pudo determinar la celda de inicio.");
-      alert("Ocurrió un error al intentar combinar las celdas.");
+    if(posFirst){
+      const {rowIndex, colIndex}=posFirst; const firstId=tableData[rowIndex].cells[colIndex].id;
+      const updated=tableData.map(row=>({...row,cells:row.cells.map(cell=>{
+        if(cell.id===firstId) return {...cell, rowSpan:maxR-minR+1, colSpan:maxC-minC+1, content:content.join("\n")};
+        if(selectedCells.includes(cell.id)) return {...cell, rowSpan:0, colSpan:0};
+        return cell;
+      })}));
+      handleUpdateActiveTabRows(updated); setSelectedCells([firstId]);
     }
   };
-  // --- LÓGICA DE IMPRESIÓN PDF ---
-  const handlePrintToPdf = () => { if(!activeSyllabus)return;const doc=new jsPDF();doc.setFontSize(18);doc.text(activeSyllabus.name,14,22);doc.setFontSize(11);doc.setTextColor(100);doc.text(`Asignatura: ${activeSyllabus.metadata.subject}`,14,30);doc.text(`Periodo: ${activeSyllabus.metadata.period}`,14,35);doc.text(`Nivel: ${activeSyllabus.metadata.level}`,14,40);const body=activeSyllabus.rows.map(r=>r.cells.map(c=>({content:c.content,rowSpan:c.rowSpan,colSpan:c.colSpan,_raw:c})));autoTable(doc,{body:body as any,startY:50,theme:'grid',columnStyles:{0:{cellWidth:60}},didParseCell:d=>{const c=(d.cell.raw as any)._raw as TableCell;if(c){if(c.isHeader){d.cell.styles.fontStyle='bold';d.cell.styles.fillColor='#F3F4F6'}if(c.backgroundColor)d.cell.styles.fillColor=c.backgroundColor;const a=c.textAlign||'left';if(['left','center','right','justify'].includes(a))d.cell.styles.halign=a as any}}});doc.save(`${activeSyllabus.name.replace(/[^a-z0-9]/gi,'_').toLowerCase()}.pdf`)}
+
+  const handlePrintToPdf = () => { 
+    if(!activeSyllabus || !activeTab) return;
+    const doc=new jsPDF(); doc.setFontSize(18); doc.text(activeSyllabus.name, 14, 22); doc.setFontSize(12); doc.text(`Sección: ${activeTab.title}`, 14, 30); 
+    const body = activeTab.rows.map(r => r.cells.map(c => ({ content: c.content, rowSpan: c.rowSpan, colSpan: c.colSpan, _raw: c })));
+    autoTable(doc, { body: body as any, startY: 40, theme: 'grid', didParseCell: d => { 
+       const c=(d.cell.raw as any)._raw as TableCell;
+       if(c){ if(c.isHeader){d.cell.styles.fontStyle='bold';d.cell.styles.fillColor='#F3F4F6'} if(c.backgroundColor)d.cell.styles.fillColor=c.backgroundColor; }
+    } });
+    doc.save(`${activeSyllabus.name}_${activeTab.title}.pdf`);
+  }
+
+  // --- FUNCIONES ADICIONALES ---
+  const handleDuplicateSyllabus = async (syllabusId: number) => {
+    const syllabusToClone = savedSyllabi.find(s => s.id === syllabusId);
+    if (!syllabusToClone) return;
+    
+    try {
+      const clonedData = JSON.parse(JSON.stringify(syllabusToClone.datos_syllabus));
+      clonedData.id = `syllabus-${Date.now()}`;
+      clonedData.name = `${syllabusToClone.nombre} (Copia)`;
+      clonedData.metadata.createdAt = new Date().toISOString();
+      clonedData.metadata.updatedAt = new Date().toISOString();
+      
+      // Guardar automáticamente en el backend
+      const payload = {
+        nombre: clonedData.name,
+        periodo: syllabusToClone.periodo,
+        materias: syllabusToClone.materias,
+        datos_syllabus: clonedData
+      };
+      
+      const result = await apiRequest('/api/syllabi', { method: 'POST', body: JSON.stringify(payload) });
+      
+      // Recargar la lista de syllabi
+      const syllabiData = await apiRequest("/api/syllabi").catch(() => ({ data: [] }));
+      const syllabiArray = Array.isArray(syllabiData?.data) ? syllabiData.data : [];
+      setSavedSyllabi(syllabiArray);
+      
+      alert("Syllabus duplicado exitosamente");
+    } catch (error: any) {
+      alert(`Error al duplicar: ${error.message}`);
+    }
+  };
+
+  const handleDeleteSyllabus = async (syllabusId: number) => {
+    if (!window.confirm("¿Está seguro de eliminar este syllabus? Esta acción no se puede deshacer.")) return;
+    
+    setIsLoading(true);
+    try {
+      await apiRequest(`/api/syllabi/${syllabusId}`, { method: 'DELETE' });
+      
+      // Recargar la lista de syllabi
+      const syllabiData = await apiRequest("/api/syllabi").catch(() => ({ data: [] }));
+      const syllabiArray = Array.isArray(syllabiData?.data) ? syllabiData.data : [];
+      setSavedSyllabi(syllabiArray);
+      
+      alert("Syllabus eliminado exitosamente");
+    } catch (error: any) {
+      alert(`Error al eliminar: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEditSyllabus = (syllabusId: number) => {
+    console.log("Editando syllabus ID:", syllabusId);
+    handleLoadSyllabus(syllabusId.toString());
+    setShowSyllabusSelector(false);
+  };
+
+  const handleNewSyllabus = () => {
+    setShowSyllabusSelector(true);
+  };
+
+  const syllabiFiltered = selectedPeriod 
+    ? savedSyllabi.filter(s => s.periodo === selectedPeriod)
+    : savedSyllabi;
   
-  // --- RENDERIZADO DEL COMPONENTE ---
   return (
     <ProtectedRoute allowedRoles={["administrador", "profesor"]}>
       <div className="min-h-screen bg-gray-50">
         <MainHeader />
         <main className="max-w-7xl mx-auto px-6 py-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Editor de Syllabus</h1>
-            <p className="text-gray-600">Carga un documento .docx para empezar a editar o selecciona uno existente.</p>
-          </div>
-
-          {!activeSyllabus && (
-            <Card>
-              <CardContent className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
-                <div className="text-center space-y-4">
-                  <h2 className="text-xl font-semibold">Cargar Nuevo Syllabus</h2>
-                  <Button onClick={() => fileInputRef.current?.click()} className="bg-emerald-600 hover:bg-emerald-700 w-full" disabled={isLoading}>
-                    {isLoading ? "Procesando..." : <><Upload className="h-4 w-4 mr-2" /> Seleccionar Archivo .docx</>}
-                  </Button>
-                  <input ref={fileInputRef} type="file" accept=".docx" onChange={handleSyllabusUpload} className="hidden" />
-                </div>
-                <div className="text-center space-y-4">
-                  <h2 className="text-xl font-semibold">O Cargar uno Existente</h2>
-                  {isListLoading ? (
-                    <p className="text-gray-500">Cargando lista de syllabi...</p>
-                  ) : savedSyllabi.length > 0 ? (
-                    <Select onValueChange={handleLoadSyllabus}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Selecciona un syllabus guardado..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {savedSyllabi.map((s) => (
-                          <SelectItem key={s.id} value={s.id.toString()}>
-                            {s.nombre || `${s.materias} - ${s.periodo}`}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <p className="text-gray-500">No hay syllabi guardados.</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {activeSyllabus && (
+          
+          {!activeSyllabus ? (
             <>
-              <Card className="mb-6">
+              {/* Pantalla Inicial */}
+              <Card className="mb-6 border-t-4 border-t-emerald-600">
                 <CardHeader>
-                  <CardTitle className="flex flex-wrap items-center justify-between gap-4 text-emerald-700">
-                    <span className="truncate">{activeSyllabus.name}</span>
-                    <div className="flex-shrink-0 flex items-center gap-2">
-                      <Button onClick={() => { setActiveSyllabusId(null); setSyllabi([]); }} variant="outline" size="sm">
-                         <Plus className="h-4 w-4 mr-2" /> Nuevo / Cargar Otro
+                  <CardTitle className="flex items-center justify-between text-emerald-800">
+                    <span>Editor de Syllabus</span>
+                    <div className="flex gap-2">
+                      <Button onClick={handleNewSyllabus} className="bg-emerald-600 hover:bg-emerald-700">
+                        <Plus className="h-4 w-4 mr-2" /> Nuevo
                       </Button>
-                      <Button onClick={handleSaveToDB} className="bg-blue-600 hover:bg-blue-700" size="sm" disabled={isSaving}>
-                        {isSaving ? "Guardando..." : <><Save className="h-4 w-4 mr-2" /> Guardar</>}
+                      <Button onClick={handleSaveToDB} disabled={!activeSyllabus} className="bg-blue-600 hover:bg-blue-700">
+                        <Save className="h-4 w-4 mr-2" /> Guardar
                       </Button>
-                      <Button onClick={handlePrintToPdf} variant="outline" size="sm">
+                      <Button onClick={handlePrintToPdf} disabled={!activeSyllabus} variant="outline">
                         <Printer className="h-4 w-4 mr-2" /> Imprimir
                       </Button>
                     </div>
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 border-t pt-4">
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                   
                     <div className="space-y-2">
-                      <Label htmlFor="materia">Nombre de la Materia</Label>
-                      <Input id="materia" placeholder="Ej: Programación Avanzada" value={activeSyllabus.metadata.subject} onChange={(e) => handleMetadataChange('subject', e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="periodo">Periodo Académico</Label>
-                      <Input id="periodo" placeholder="Ej: 2025-S1" value={activeSyllabus.metadata.period} onChange={(e) => handleMetadataChange('period', e.target.value)} />
+                      <Label>Periodo</Label>
+                      <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccione el periodo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {periodos.map((periodo) => (
+                            <SelectItem key={periodo.id} value={periodo.nombre}>
+                              {periodo.nombre}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
+              {/* Modal Selector de Syllabus */}
+              {showSyllabusSelector && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                  <Card className="w-full max-w-3xl max-h-[80vh] overflow-y-auto">
+                    <CardHeader>
+                      <CardTitle className="flex items-center justify-between">
+                        <span>Seleccionar Syllabus</span>
+                        <Button variant="ghost" size="icon" onClick={() => setShowSyllabusSelector(false)}>
+                          <X className="h-5 w-5" />
+                        </Button>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <Button onClick={() => fileInputRef.current?.click()} className="w-full bg-emerald-600 hover:bg-emerald-700" disabled={isLoading}>
+                        {isLoading ? "Procesando..." : <><Upload className="h-4 w-4 mr-2" /> Subir Nuevo Word (.docx)</>}
+                      </Button>
+                      <input ref={fileInputRef} type="file" accept=".docx" onChange={(e) => { handleSyllabusUpload(e); setShowSyllabusSelector(false); }} className="hidden" />
+                      
+                      <div className="border-t pt-4">
+                        <h3 className="font-semibold mb-3">O seleccione uno existente:</h3>
+                        {isListLoading ? (
+                          <p className="text-center py-4">Cargando...</p>
+                        ) : syllabiFiltered.length > 0 ? (
+                          <div className="space-y-2 max-h-96 overflow-y-auto">
+                            {syllabiFiltered.map(s => (
+                              <div key={s.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
+                                <div className="flex-1">
+                                  <p className="font-medium">{s.nombre}</p>
+                                  <p className="text-sm text-gray-500">{s.periodo} - {s.materias}</p>
+                                </div>
+                                <Button onClick={() => { handleLoadSyllabus(s.id.toString()); setShowSyllabusSelector(false); }} className="bg-emerald-600 hover:bg-emerald-700">
+                                  Seleccionar
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-center text-gray-500 py-4">No hay syllabus disponibles</p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+
+              {/* Tabla de Syllabus Creados */}
               <Card>
-                <CardContent className="p-4">
-                  <div className="flex flex-wrap gap-2 mb-4 p-2 border rounded-md bg-gray-50">
-                     <Button size="sm" onClick={() => handleInsertRow('above')} disabled={selectedCells.length === 0}><Plus className="h-4 w-4 mr-1" />Fila Arriba</Button>
-                     <Button size="sm" onClick={() => handleInsertRow('below')} disabled={selectedCells.length === 0}><Plus className="h-4 w-4 mr-1" />Fila Abajo</Button>
-                     <Button size="sm" onClick={() => handleInsertColumn('left')} disabled={selectedCells.length === 0}><Plus className="h-4 w-4 mr-1" />Col. Izq.</Button>
-                     <Button size="sm" onClick={() => handleInsertColumn('right')} disabled={selectedCells.length === 0}><Plus className="h-4 w-4 mr-1" />Col. Der.</Button>
-                     <Button size="sm" onClick={removeSelectedRow} variant="destructive" disabled={selectedCells.length === 0}><Minus className="h-4 w-4 mr-1" />Elim. Fila</Button>
-                     <Button size="sm" onClick={removeSelectedColumn} variant="destructive" disabled={selectedCells.length === 0}><Minus className="h-4 w-4 mr-1" />Elim. Columna</Button>
-                     <Button size="sm" onClick={clearSelectedCells} disabled={selectedCells.length === 0} variant="outline"><Trash2 className="h-4 w-4 mr-1" />Limpiar</Button>
-                     <Button size="sm" onClick={mergeCells} disabled={selectedCells.length < 2} variant="outline"><Merge className="h-4 w-4 mr-1" />Combinar</Button>
-                  </div>
-
-                  <div className="overflow-x-auto border rounded-lg shadow-sm">
-                    <table className="dynamic-table w-full border-collapse">
-                      <tbody>
-                        {tableData.map((row) => (
-                          <tr key={row.id}>
-                            {row.cells.map((cell) => {
-                              if (cell.rowSpan === 0 || cell.colSpan === 0) return null;
-                              return (
-                                <td key={cell.id} className={`border p-2 relative align-top ${cell.isHeader ? "font-bold bg-gray-100" : "bg-white"} ${selectedCells.includes(cell.id) ? "ring-2 ring-emerald-500 z-10" : ""}`} style={{ backgroundColor: cell.backgroundColor, color: cell.textColor, textAlign: (cell.textAlign as any) || "left", }} rowSpan={cell.rowSpan || 1} colSpan={cell.colSpan || 1} onClick={(e) => handleCellClick(cell.id, e)} onDoubleClick={() => cell.isEditable && startEditing(cell.id, cell.content)}>
-                                  {editingCell === cell.id ? (
-                                    <Textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} autoFocus onBlur={saveEdit} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveEdit(); } if (e.key === "Escape") { cancelEdit(); } }}/>
-                                  ) : (
-                                    <div className="min-h-[24px] whitespace-pre-wrap">{cell.content || <br />}</div>
-                                  )}
-                                </td>
-                              )
-                            })}
+                <CardHeader>
+                  <CardTitle>Syllabus Creados</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {isListLoading ? (
+                    <p className="text-center py-8">Cargando...</p>
+                  ) : syllabiFiltered.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-sm font-semibold">Nombre</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold">Periodo</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold">Materia</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold">Fecha</th>
+                            <th className="px-4 py-3 text-center text-sm font-semibold">Acciones</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y">
+                          {syllabiFiltered.map(s => (
+                            <tr key={s.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2">
+                                  <FileText className="h-4 w-4 text-emerald-600" />
+                                  <span className="font-medium">{s.nombre}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">{s.periodo}</td>
+                              <td className="px-4 py-3">{s.materias}</td>
+                              <td className="px-4 py-3 text-sm text-gray-500">
+                                {new Date(s.created_at).toLocaleDateString()}
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center justify-center gap-2">
+                                  <Button variant="outline" size="sm" onClick={() => handleEditSyllabus(s.id)} className="text-blue-600 hover:text-blue-700">
+                                    <Pencil className="h-4 w-4 mr-1" /> Modificar
+                                  </Button>
+                                  <Button variant="outline" size="sm" onClick={() => handleDuplicateSyllabus(s.id)} className="text-emerald-600 hover:text-emerald-700">
+                                    <Copy className="h-4 w-4 mr-1" /> Duplicar
+                                  </Button>
+                                  <Button variant="outline" size="sm" onClick={() => handleDeleteSyllabus(s.id)} className="text-red-600 hover:text-red-700">
+                                    <Trash2 className="h-4 w-4 mr-1" /> Eliminar
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <FileText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-gray-500">No hay syllabus creados aún</p>
+                      <Button onClick={handleNewSyllabus} className="mt-4 bg-emerald-600 hover:bg-emerald-700">
+                        <Plus className="h-4 w-4 mr-2" /> Crear Primer Syllabus
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            <>
+              <Card className="mb-6 border-t-4 border-t-emerald-600">
+                <CardHeader>
+                  <CardTitle className="flex flex-wrap items-center justify-between gap-4 text-emerald-800">
+                    <span className="truncate">{activeSyllabus.name}</span>
+                    <div className="flex-shrink-0 flex items-center gap-2">
+                       <Button onClick={() => { setActiveSyllabusId(null); setSyllabi([]); }} variant="outline" size="sm"> <Plus className="h-4 w-4 mr-2" /> Nuevo</Button>
+                       <Button onClick={handleSaveToDB} className="bg-blue-600 hover:bg-blue-700" size="sm" disabled={isSaving}>{isSaving ? "Guardando..." : <><Save className="h-4 w-4 mr-2" /> Guardar</>}</Button>
+                       <Button onClick={handlePrintToPdf} variant="outline" size="sm" disabled={!activeTab}><Printer className="h-4 w-4 mr-2" /> Imprimir</Button>
+                    </div>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 gap-4 mt-4 border-t pt-4">
+                    <div className="space-y-2">
+                      <Label>Periodo Académico</Label>
+                      <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccione el periodo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {periodos.map((periodo) => (
+                            <SelectItem key={periodo.id} value={periodo.nombre}>
+                              {periodo.nombre}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
+
+              <div className="mb-6 select-none">
+                <div className="flex flex-wrap items-center gap-2 pb-2 border-b border-emerald-100">
+                  {activeSyllabus.tabs.map(tab => (
+                    <div key={tab.id} className="relative group">
+                      {editingTabId === tab.id ? (
+                        <div className="flex items-center bg-white border border-emerald-500 rounded px-1 shadow-sm h-10">
+                          <Input value={tempTabTitle} onChange={(e) => setTempTabTitle(e.target.value)} className="h-8 w-40 border-none focus-visible:ring-0 px-1" autoFocus onKeyDown={(e) => e.key === "Enter" && saveTabRename()} onBlur={saveTabRename} />
+                          <Button size="icon" variant="ghost" className="h-6 w-6 text-emerald-600" onClick={saveTabRename}><Check className="h-4 w-4" /></Button>
+                        </div>
+                      ) : (
+                        <div onClick={() => setActiveTabId(tab.id)} onDoubleClick={() => startRenamingTab(tab)} className={`flex items-center h-10 px-4 rounded-md border cursor-pointer transition-all duration-200 ${activeTabId === tab.id ? 'bg-emerald-600 text-white border-emerald-700 shadow-md font-medium' : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'}`}>
+                          <span className="max-w-[150px] truncate mr-2" title={tab.title}>{tab.title}</span>
+                          <div className={`flex items-center gap-1 ${activeTabId === tab.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}>
+                             <Pencil className={`h-3 w-3 cursor-pointer ${activeTabId === tab.id ? 'text-emerald-200 hover:text-white' : 'text-emerald-400 hover:text-emerald-700'}`} onClick={(e) => { e.stopPropagation(); startRenamingTab(tab); }} />
+                             <X className={`h-4 w-4 cursor-pointer rounded-full p-0.5 ${activeTabId === tab.id ? 'text-red-200 hover:bg-red-500 hover:text-white' : 'text-red-400 hover:bg-red-100 hover:text-red-600'}`} onClick={(e) => { e.stopPropagation(); removeTab(tab.id); }} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <Button onClick={addTab} variant="outline" size="sm" className="h-10 border-dashed border-emerald-300 text-emerald-700 hover:bg-emerald-50"><Plus className="h-4 w-4 mr-1" /> Nueva Sección</Button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1 italic pl-1">* Doble clic en una pestaña para renombrarla.</p>
+              </div>
+
+              {activeTab && (
+                <Card className="border-emerald-100 shadow-md">
+                  <CardContent className="p-4">
+                    <div className="flex flex-wrap gap-2 mb-4 p-2 border rounded-md bg-emerald-50/50">
+                       <Button size="sm" className="bg-white text-emerald-700 border-emerald-200" onClick={() => handleInsertRow('above')} disabled={!selectedCells.length}><Plus className="h-3 w-3 mr-1"/>Fila ↑</Button>
+                       <Button size="sm" className="bg-white text-emerald-700 border-emerald-200" onClick={() => handleInsertRow('below')} disabled={!selectedCells.length}><Plus className="h-3 w-3 mr-1"/>Fila ↓</Button>
+                       <Button size="sm" className="bg-white text-emerald-700 border-emerald-200" onClick={() => handleInsertColumn('left')} disabled={!selectedCells.length}><Plus className="h-3 w-3 mr-1"/>Col ←</Button>
+                       <Button size="sm" className="bg-white text-emerald-700 border-emerald-200" onClick={() => handleInsertColumn('right')} disabled={!selectedCells.length}><Plus className="h-3 w-3 mr-1"/>Col →</Button>
+                       <div className="w-px h-6 bg-emerald-200 mx-1"></div>
+                       <Button size="sm" onClick={removeSelectedRow} className="bg-red-50 text-red-600 border-red-200" disabled={!selectedCells.length}><Minus className="h-3 w-3 mr-1"/>Fila</Button>
+                       <Button size="sm" onClick={removeSelectedColumn} className="bg-red-50 text-red-600 border-red-200" disabled={!selectedCells.length}><Minus className="h-3 w-3 mr-1"/>Col</Button>
+                       <div className="w-px h-6 bg-emerald-200 mx-1"></div>
+                       <Button size="sm" onClick={toggleVerticalText} className="bg-white text-emerald-700 border-emerald-200" disabled={!selectedCells.length} title="Rotar Texto Verticalmente"><ArrowUpFromLine className="h-4 w-4 mr-1" /> Vertical</Button>
+                       <Button size="sm" onClick={mergeCells} disabled={selectedCells.length < 2} variant="outline"><Merge className="h-4 w-4 mr-1" />Unir</Button>
+                       <Button size="sm" onClick={clearSelectedCells} disabled={!selectedCells.length} variant="outline"><Trash2 className="h-4 w-4 mr-1" />Limpiar</Button>
+                    </div>
+
+                    <div className="overflow-x-auto border border-gray-200 rounded-lg shadow-sm bg-white">
+                      <table className="w-full border-collapse text-sm text-left"> 
+                        <tbody className="divide-y divide-gray-200">
+                          {tableData.map((row) => {
+                            const isFormRow = row.cells.length === 3 && row.cells[1].content.trim() === ':';
+
+                            return (
+                              <tr key={row.id} className="hover:bg-gray-50/50 transition-colors">
+                                {row.cells.map((cell, index) => {
+                                  if (cell.rowSpan === 0 || cell.colSpan === 0) return null;
+                                  
+                                  const isSelected = selectedCells.includes(cell.id);
+                                  const isHeader = cell.isHeader;
+                                  const isSeparator = cell.content.trim() === ':';
+                                  const isVertical = cell.textOrientation === 'vertical';
+
+                                  // --- LÓGICA DE ANCHOS ---
+                                  let widthStyle = 'auto';
+                                  let minWidthStyle = 'auto';
+
+                                  if (isFormRow) {
+                                    if (index === 0) widthStyle = '20%';      
+                                    else if (index === 1) widthStyle = '1%';  
+                                    else widthStyle = 'auto';                 
+                                  } else {
+                                    if (isVertical) {
+                                        minWidthStyle = '40px';
+                                        widthStyle = '1%'; 
+                                    } else if (cell.content.length > 5 || isHeader) {
+                                        minWidthStyle = '120px'; 
+                                    } else {
+                                        minWidthStyle = '40px';
+                                    }
+                                  }
+                                  
+                                  // --- ALINEACIÓN: CENTRAR TÍTULOS Y VERTICALES ---
+                                  let justifyContent = 'justify-start'; 
+                                  if (isHeader || isSeparator || isVertical) justifyContent = 'justify-center';
+                                  
+                                  return (
+                                    <td 
+                                      key={cell.id} 
+                                      className={`
+                                        border border-gray-200 
+                                        relative transition-all duration-75 ease-in-out
+                                        ${isHeader ? "bg-gray-50 font-semibold text-gray-900" : "bg-white text-gray-700"}
+                                        ${isSelected ? "ring-2 ring-inset ring-emerald-500 z-10" : ""}
+                                      `}
+                                      style={{ 
+                                        backgroundColor: cell.backgroundColor || (isHeader ? '#f9fafb' : '#ffffff'),
+                                        color: cell.textColor, 
+                                        width: widthStyle,
+                                        minWidth: minWidthStyle, 
+                                        whiteSpace: isSeparator ? 'nowrap' : 'normal',
+                                        padding: 0, 
+                                        height: '1px', 
+                                      }} 
+                                      rowSpan={cell.rowSpan || 1} 
+                                      colSpan={cell.colSpan || 1} 
+                                      onClick={(e) => handleCellClick(cell.id, e)} 
+                                      onDoubleClick={() => cell.isEditable && startEditing(cell.id, cell.content)}
+                                    >
+                                      <div 
+                                        className={`w-full h-full flex items-center ${justifyContent} p-2`}
+                                        style={{
+                                            writingMode: isVertical ? 'vertical-rl' : undefined,
+                                            transform: isVertical ? 'rotate(180deg)' : undefined,
+                                            minHeight: isVertical ? '120px' : 'auto', 
+                                            textAlign: isHeader ? 'center' : 'left' 
+                                        }}
+                                      >
+                                        {editingCell === cell.id ? (
+                                          <Textarea 
+                                            value={editContent} 
+                                            onChange={(e) => setEditContent(e.target.value)} 
+                                            autoFocus 
+                                            onBlur={saveEdit} 
+                                            className="w-full min-h-[60px] p-1 bg-white border-emerald-400 focus:ring-0 text-sm resize-none shadow-sm leading-normal"
+                                            style={{ writingMode: 'horizontal-tb', transform: 'none' }} 
+                                            onKeyDown={(e) => { 
+                                              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveEdit(); } 
+                                              if (e.key === "Escape") { cancelEdit(); } 
+                                            }}
+                                          />
+                                        ) : (
+                                          <div className="whitespace-pre-wrap leading-normal break-words">
+                                            {cell.content || <span className="opacity-0">.</span>}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </td>
+                                  )
+                                })}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </>
           )}
         </main>

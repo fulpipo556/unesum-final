@@ -41,6 +41,7 @@ module.exports = (app) => {
   router.use('/asignaturas', asignaturaRoutes);
   router.use('/clasifica', clasificaRoutes);
   router.use('/periodo', periodoRoutes);
+  router.use('/periodos', periodoRoutes);
   router.use('/malla-curricular', mallaCurricularRoutes);
   router.use('/mallas', mallaRoutes);
   router.use('/syllabus-extraction', syllabusExtractionRoutes);

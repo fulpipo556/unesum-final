@@ -104,13 +104,13 @@ export default function AdminDashboard() {
     },
    
     // --- 2. AÑADE EL NUEVO MÓDULO AQUÍ ---
-   /* {
+   {
       title: "Configuración del Syllabus",
       description: "Cargar y editar syllabus desde documentos Word",
       icon: FileText,
       href: "/dashboard/admin/editor-syllabus",
       color: "bg-purple-500",
-    },*
+    },
     /*{
       title: "Configuración",
       description: "Configuración general del sistema",

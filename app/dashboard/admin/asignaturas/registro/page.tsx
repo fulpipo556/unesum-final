@@ -1,13 +1,14 @@
 "use client"
 
 import { useState, useEffect, useMemo, useCallback } from "react" // <--- AÑADIDO: useCallback
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { CheckCircle2, Lock, Loader2, Trash2, Edit, AlertTriangle, BookOpen } from "lucide-react" 
+import { CheckCircle2, Lock, Loader2, Trash2, Edit, AlertTriangle, BookOpen, ArrowLeft, Plus } from "lucide-react" 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/contexts/auth-context"
 import MallaModal from "@/components/malla/malla-modal"
@@ -47,6 +48,7 @@ interface AsignaturaCompleta {
 const API_BASE_URL = 'http://localhost:4000/api';
 
 export default function RegistroAsignaturaPage() {
+  const router = useRouter()
   const [completedSections, setCompletedSections] = useState<Section[]>([])
   const [currentSection, setCurrentSection] = useState<Section>("basica")
   const { token, getToken } = useAuth()
@@ -67,11 +69,14 @@ export default function RegistroAsignaturaPage() {
   const [editingAsignaturaId, setEditingAsignaturaId] = useState<number | null>(null);
   const [asignaturasNivelAnterior, setAsignaturasNivelAnterior] = useState<AsignaturaCompleta[]>([]);
   const [asignaturasNivelActual, setAsignaturasNivelActual] = useState<AsignaturaCompleta[]>([]);
+  const [codigoError, setCodigoError] = useState<string>("");
+  const [descripcionError, setDescripcionError] = useState<string>("");
 
   // --- ESTADOS DE MALLA ---
   const [showMallaModal, setShowMallaModal] = useState(true);
   const [codigoMallaActual, setCodigoMallaActual] = useState("");
   const [mallaSeleccionada, setMallaSeleccionada] = useState(false);
+  const [registroCompletado, setRegistroCompletado] = useState(false);
 
   // --- ESTADOS DEL FORMULARIO (SIN CAMBIOS) ---
   const [facultad, setFacultad] = useState("")
@@ -79,6 +84,16 @@ export default function RegistroAsignaturaPage() {
   const [nivel, setNivel] = useState("")
   const [organizacion, setOrganizacion] = useState("")
   const [codigo, setCodigo] = useState("")
+  
+  const handleCodigoChange = (value: string) => {
+    setCodigo(value);
+    if (codigoError) setCodigoError(""); // Limpiar el error cuando el usuario cambia el código
+  };
+  
+  const handleDescripcionChange = (value: string) => {
+    setDescripcion(value);
+    if (descripcionError) setDescripcionError(""); // Limpiar el error cuando el usuario cambia la asignatura
+  };
   const [descripcion, setDescripcion] = useState("")
   const [adscrCedDE, setAdscrCedDE] = useState("")
   const [adscrCedCODE, setAdscrCedCODE] = useState("")
@@ -97,20 +112,27 @@ export default function RegistroAsignaturaPage() {
 
     try {
       const response = await fetch(fullUrl, { ...options, headers });
-      const data = await response.json();
-      if (!response.ok || !data.success) { // <--- AJUSTE: Verificar el campo 'success' del backend
-        throw new Error(data.message || `Error en la petición: ${response.statusText}`);
+      
+      // Intentar parsear el JSON
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        throw new Error("Error al procesar la respuesta del servidor");
+      }
+      
+      if (!response.ok || !data.success) {
+        const errorMessage = data.message || `Error en la petición: ${response.statusText}`;
+        throw new Error(errorMessage);
       }
       return data;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "No se pudo completar la operación.";
-      console.error("Error en la petición a la API:", error);
-      toast({
-        title: "Error de Conexión",
-        description: errorMessage,
-        variant: "destructive",
-      });
-      return null;
+      // Si el error ya es un Error con mensaje, lo propagamos
+      if (error instanceof Error) {
+        throw error;
+      }
+      // Si es otro tipo de error, lo convertimos en un Error con mensaje genérico
+      throw new Error("Error de conexión con el servidor");
     }
   }
 
@@ -131,6 +153,12 @@ export default function RegistroAsignaturaPage() {
         if (organizacionesRes) setOrganizaciones(organizacionesRes.data || organizacionesRes);
       } catch (error) {
         console.error("Fallo al cargar datos iniciales:", error);
+        const errorMessage = error instanceof Error ? error.message : "Error al cargar datos iniciales";
+        toast({
+          title: "Error al cargar datos",
+          description: errorMessage,
+          variant: "destructive",
+        });
       } finally {
         setLoading(false);
       }
@@ -173,6 +201,7 @@ export default function RegistroAsignaturaPage() {
             setAsignaturasDelNivel([]);
             setAsignaturasNivelAnterior([]);
             setAsignaturasNivelActual([]);
+            // No mostrar toast aquí ya que es una carga en segundo plano
         } finally {
             setLoadingAsignaturas(false);
         }
@@ -247,11 +276,59 @@ export default function RegistroAsignaturaPage() {
       setAsignaturasDelNivel([]);
       setAsignaturasNivelAnterior([]);
       setAsignaturasNivelActual([]);
+      setRegistroCompletado(false);
       
       // Restablecer el modal de malla al estado inicial
       setCodigoMallaActual("");
       setMallaSeleccionada(false);
       setShowMallaModal(true);
+  };
+
+  const handleContinuarDesdeNivel = () => {
+    // Limpiar el formulario pero mantener facultad, carrera y nivel
+    const facultadActual = facultad;
+    const carreraActual = carrera;
+    const nivelActual = nivel;
+    const mallaActual = codigoMallaActual;
+    const mallaSelec = mallaSeleccionada;
+    const carrerasFilt = carrerasFiltradas;
+    
+    setCodigo("");
+    setDescripcion("");
+    setAdscrCedDE("");
+    setAdscrCedCODE("");
+    setOrganizacion("");
+    setHorasDocencia("");
+    setHorasPractica("");
+    setHorasAutonoma("");
+    setHorasVinculacion("");
+    setHorasPracticaPreprofesional("");
+    setUnidades([{ unidad: "", descripcion: "", resultados: "" }]);
+    setCompletedSections(["basica"]); // Mantener la sección básica completa
+    setCurrentSection("asignatura");
+    setEditingAsignaturaId(null);
+    setNewAsignaturaId(null);  // IMPORTANTE: Limpiar el ID de la asignatura guardada
+    setRegistroCompletado(false);
+    
+    // Restaurar los valores que queremos mantener
+    setFacultad(facultadActual);
+    setCarrera(carreraActual);
+    setNivel(nivelActual);
+    setCodigoMallaActual(mallaActual);
+    setMallaSeleccionada(mallaSelec);
+    setCarrerasFiltradas(carrerasFilt);
+    
+    console.log("🔄 Formulario reiniciado para nueva asignatura");
+    console.log("📝 Estado limpiado - editingAsignaturaId: null, newAsignaturaId: null");
+    
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    toast({ title: "Éxito", description: "Puede agregar otra asignatura al mismo nivel." });
+  };
+
+  const handleOtraMalla = () => {
+    resetForm();
+    setShowMallaModal(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const isSectionCompleted = (section: Section) => completedSections.includes(section)
@@ -266,6 +343,9 @@ export default function RegistroAsignaturaPage() {
   const handleSaveSection = async (section: Section) => {
     setIsSaving(true);
     
+    console.log("💾 Guardando sección:", section);
+    console.log("🔍 Estado actual - editingAsignaturaId:", editingAsignaturaId, "newAsignaturaId:", newAsignaturaId);
+    
     try {
         if (section === "basica") {
             if (!completedSections.includes(section)) setCompletedSections(prev => [...prev, section]);
@@ -277,18 +357,72 @@ export default function RegistroAsignaturaPage() {
         const asignaturaId = editingAsignaturaId || newAsignaturaId;
         
         if (section === "asignatura") {
+            // Validación adicional del código
+            if (!codigo || codigo.trim() === "") {
+                toast({
+                    title: "Error de validación",
+                    description: "El código de la asignatura es obligatorio",
+                    variant: "destructive",
+                });
+                return;
+            }
+            
+            // Validación local: verificar si el código ya existe en las asignaturas del nivel actual
+            const codigoExistente = asignaturasDelNivel.find(
+                asig => asig.codigo.toLowerCase() === codigo.trim().toLowerCase() && 
+                        asig.id !== asignaturaId
+            );
+            
+            if (codigoExistente) {
+                const mensaje = `El código '${codigo}' ya está siendo usado por otra asignatura: ${codigoExistente.nombre}. Por favor, use un código diferente.`;
+                setCodigoError(mensaje);
+                toast({
+                    title: "Código duplicado",
+                    description: mensaje,
+                    variant: "destructive",
+                });
+                return;
+            }
+            
+            // Validación local: verificar si el nombre ya existe en las asignaturas del nivel actual
+            const nombreExistente = asignaturasDelNivel.find(
+                asig => asig.nombre.toLowerCase() === descripcion.trim().toLowerCase() && 
+                        asig.id !== asignaturaId
+            );
+            
+            if (nombreExistente) {
+                const mensaje = `La asignatura '${descripcion}' ya existe en este nivel con el código: ${nombreExistente.codigo}. Por favor, use un nombre diferente.`;
+                setDescripcionError(mensaje);
+                toast({
+                    title: "Asignatura duplicada",
+                    description: mensaje,
+                    variant: "destructive",
+                });
+                return;
+            }
+            
             // Para la asignatura base, sí distinguimos entre POST (crear) y PUT (actualizar)
-            const method = editingAsignaturaId ? 'PUT' : 'POST';
-            const endpoint = editingAsignaturaId ? `/asignaturas/${editingAsignaturaId}` : "/asignaturas";
+            // Si existe editingAsignaturaId o newAsignaturaId, es una actualización (PUT)
+            const isUpdate = !!(editingAsignaturaId || newAsignaturaId);
+            const method = isUpdate ? 'PUT' : 'POST';
+            const endpoint = isUpdate ? `/asignaturas/${asignaturaId}` : "/asignaturas";
             const payload = {
                 carrera_id: parseInt(carrera),
                 nivel_id: parseInt(nivel),
                 organizacion_id: parseInt(organizacion),
                 nombre: descripcion,
-                codigo: codigo,
+                codigo: codigo.trim(), // Eliminar espacios en blanco
                 prerrequisito_codigo: (adscrCedDE && adscrCedDE !== "NINGUNO") ? adscrCedDE : null,
                 correquisito_codigo: (adscrCedCODE && adscrCedCODE !== "NINGUNO") ? adscrCedCODE : null,
             };
+            
+            // Log para depuración - verificar qué código se está enviando
+            console.log("📤 Enviando datos de asignatura:", payload);
+            console.log("📝 Código actual en el estado:", codigo);
+            console.log("🔑 Método HTTP:", method);
+            console.log("🌐 Endpoint:", endpoint);
+            console.log("🆔 Actualizando ID:", asignaturaId);
+            
             response = await apiRequest(endpoint, { method, body: JSON.stringify(payload) });
 
             if (response && response.data.id) {
@@ -320,7 +454,8 @@ export default function RegistroAsignaturaPage() {
             if(response) {
                 toast({ title: "Registro Completo", description: "La asignatura ha sido guardada." });
                 await cargarAsignaturas(); // Recargar la tabla con los datos actualizados
-                resetForm();
+                setRegistroCompletado(true); // Activar el estado de registro completado
+                // No resetear el formulario aquí, dejar que el usuario elija qué hacer
             }
         }
 
@@ -334,8 +469,54 @@ export default function RegistroAsignaturaPage() {
         }
 
     } catch (error) {
-        // El error ya se muestra en el toast dentro de apiRequest
+        const errorMessage = error instanceof Error ? error.message : "Error al guardar";
         console.error("Error al guardar la sección:", error);
+        console.error("🔴 Mensaje de error completo:", errorMessage);
+        
+        if (section === "asignatura") {
+            const mensajeLower = errorMessage.toLowerCase();
+            
+            // Detectar error de código duplicado (más flexible)
+            if (mensajeLower.includes("código") || mensajeLower.includes("codigo")) {
+                if (mensajeLower.includes("duplicado") || 
+                    mensajeLower.includes("ya está") || 
+                    mensajeLower.includes("ya esta") ||
+                    mensajeLower.includes("existe") ||
+                    mensajeLower.includes("usado")) {
+                    setCodigoError(errorMessage);
+                }
+            }
+            
+            // Detectar error de asignatura/nombre duplicado (más flexible)
+            if (mensajeLower.includes("asignatura") || 
+                mensajeLower.includes("nombre") ||
+                mensajeLower.includes("descripcion") ||
+                mensajeLower.includes("descripción")) {
+                if (mensajeLower.includes("duplicado") || 
+                    mensajeLower.includes("duplicada") ||
+                    mensajeLower.includes("ya está") || 
+                    mensajeLower.includes("ya esta") ||
+                    mensajeLower.includes("existe") ||
+                    mensajeLower.includes("usado") ||
+                    mensajeLower.includes("usada")) {
+                    setDescripcionError(errorMessage);
+                }
+            }
+            
+            // Si el error contiene referencias a ambos (código Y nombre), detectar ambos
+            if ((mensajeLower.includes("código") || mensajeLower.includes("codigo")) && 
+                !codigoError && 
+                (mensajeLower.includes("duplicado") || mensajeLower.includes("existe"))) {
+                setCodigoError("El código ya está en uso. Por favor, use un código diferente.");
+            }
+        }
+        
+        // Mostrar mensaje de error claro al usuario
+        toast({
+            title: "Error al guardar",
+            description: errorMessage,
+            variant: "destructive",
+        });
     } finally {
         setIsSaving(false);
     }
@@ -374,10 +555,19 @@ export default function RegistroAsignaturaPage() {
 
     const handleDelete = async (asignaturaId: number) => {
         if (window.confirm("¿Está seguro de que desea eliminar esta asignatura? Esta acción no se puede deshacer.")) {
-            const response = await apiRequest(`/asignaturas/${asignaturaId}`, { method: 'DELETE' });
-            if (response) {
-                toast({ title: "Eliminado", description: response.message });
-                await cargarAsignaturas(); // Recargar la tabla para reflejar la eliminación
+            try {
+                const response = await apiRequest(`/asignaturas/${asignaturaId}`, { method: 'DELETE' });
+                if (response) {
+                    toast({ title: "Eliminado", description: response.message });
+                    await cargarAsignaturas(); // Recargar la tabla para reflejar la eliminación
+                }
+            } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : "Error al eliminar la asignatura";
+                toast({
+                    title: "Error",
+                    description: errorMessage,
+                    variant: "destructive",
+                });
             }
         }
     };
@@ -440,12 +630,24 @@ export default function RegistroAsignaturaPage() {
         )}
 
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-[#00563F]">
-              {editingAsignaturaId ? "Editando Asignatura" : "Registro de Asignatura"}
-          </h1>
-          <p className="text-muted-foreground mt-2">
-              {editingAsignaturaId ? "Modifique los datos necesarios y guarde cada sección." : "Complete cada sección para registrar una nueva asignatura en la malla curricular."}
-          </p>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-3xl font-bold text-[#00563F]">
+                  {editingAsignaturaId ? "Editando Asignatura" : "Registro de Asignatura"}
+              </h1>
+              <p className="text-muted-foreground mt-2">
+                  {editingAsignaturaId ? "Modifique los datos necesarios y guarde cada sección." : "Complete cada sección para registrar una nueva asignatura en la malla curricular."}
+              </p>
+            </div>
+            <Button
+              onClick={() => router.push('/dashboard/admin')}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Menú
+            </Button>
+          </div>
       </div>
 
       {/* ... (El resto de tu código JSX permanece igual) ... */}
@@ -587,13 +789,37 @@ export default function RegistroAsignaturaPage() {
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="codigo">Código</Label>
-                        <Input id="codigo" value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Código de Asignatura" />
+                        <Input 
+                            id="codigo" 
+                            value={codigo} 
+                            onChange={(e) => handleCodigoChange(e.target.value)} 
+                            placeholder="Código de Asignatura"
+                            className={codigoError ? "border-red-500 focus:border-red-500" : ""}
+                        />
+                        {codigoError && (
+                            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-300 rounded-md">
+                                <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                                <p className="text-sm text-red-800">{codigoError}</p>
+                            </div>
+                        )}
                     </div>
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="descripcion">Asignatura</Label>
-                  <Input id="descripcion" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Nombre de la Asignatura" />
+                  <Input 
+                    id="descripcion" 
+                    value={descripcion} 
+                    onChange={(e) => handleDescripcionChange(e.target.value)} 
+                    placeholder="Nombre de la Asignatura"
+                    className={descripcionError ? "border-red-500 focus:border-red-500" : ""}
+                  />
+                  {descripcionError && (
+                    <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-300 rounded-md">
+                      <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-red-800">{descripcionError}</p>
+                    </div>
+                  )}
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -743,10 +969,52 @@ export default function RegistroAsignaturaPage() {
                   + Agregar Unidad Temática
                 </Button>
                 <div className="pt-4 border-t">
-                  <Button onClick={() => handleSaveSection("unidades")} className="bg-[#00563F] hover:bg-[#00563F]/90" disabled={unidades.some((u) => !u.unidad || !u.descripcion) || isSaving}>
-                    {isSaving && currentSection === 'unidades' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {editingAsignaturaId ? "Actualizar Registro Completo" : "Guardar Registro Completo"}
-                  </Button>
+                  {!registroCompletado ? (
+                    <Button onClick={() => handleSaveSection("unidades")} className="bg-[#00563F] hover:bg-[#00563F]/90" disabled={unidades.some((u) => !u.unidad || !u.descripcion) || isSaving}>
+                      {isSaving && currentSection === 'unidades' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      {editingAsignaturaId ? "Actualizar Registro Completo" : "Guardar Registro Completo"}
+                    </Button>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="p-4 bg-green-50 border-2 border-green-500 rounded-lg">
+                        <div className="flex items-center gap-2 text-green-800 mb-2">
+                          <CheckCircle2 className="h-5 w-5" />
+                          <h4 className="font-semibold">Registro Guardado Exitosamente</h4>
+                        </div>
+                        <p className="text-sm text-green-700">
+                          La asignatura ha sido guardada correctamente. ¿Qué desea hacer a continuación?
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        <Button 
+                          onClick={handleContinuarDesdeNivel}
+                          className="bg-[#00563F] hover:bg-[#004830] flex-1 min-w-[200px]"
+                        >
+                          <BookOpen className="mr-2 h-4 w-4" />
+                          Continuar
+                          <span className="ml-1 text-xs">(Agregar otra asignatura al nivel)</span>
+                        </Button>
+                        <Button 
+                          onClick={handleOtraMalla}
+                          variant="outline"
+                          className="flex-1 min-w-[200px] border-[#00563F] text-[#00563F] hover:bg-[#00563F] hover:text-white"
+                        >
+                          <Plus className="mr-2 h-4 w-4" />
+                          Otra Malla
+                          <span className="ml-1 text-xs">(Cambiar de malla curricular)</span>
+                        </Button>
+                        <Button 
+                          onClick={() => router.push('/dashboard/admin')}
+                          variant="outline"
+                          className="flex-1 min-w-[200px]"
+                        >
+                          <ArrowLeft className="mr-2 h-4 w-4" />
+                          Menú
+                          <span className="ml-1 text-xs">(Volver al dashboard)</span>
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : ( <p className="text-muted-foreground">Complete la sección anterior para desbloquear</p> )}
@@ -781,6 +1049,7 @@ export default function RegistroAsignaturaPage() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
+                                    <TableHead>Código</TableHead>
                                     <TableHead>Asignatura</TableHead>
                                     <TableHead>Unidades Temáticas</TableHead>
                                     <TableHead>Resultados de Aprendizaje</TableHead>
@@ -802,7 +1071,8 @@ export default function RegistroAsignaturaPage() {
                                                   (asig.horas?.horasPracticaPreprofesional || 0);
                                     return (
                                         <TableRow key={asig.id}>
-                                            <TableCell className="font-medium">{asig.nombre} <br/></TableCell>
+                                            <TableCell className="font-semibold text-[#00563F]">{asig.codigo}</TableCell>
+                                            <TableCell className="font-medium">{asig.nombre}</TableCell>
                                             <TableCell className="max-w-xs">{asig.unidades.map(u => u.unidad).join(", ")}</TableCell>
                                             <TableCell className="max-w-xs">{asig.unidades.map(u => u.resultados).join(", ")}</TableCell>
                                             <TableCell className="text-center">{asig.horas?.horasDocencia || 0}</TableCell>

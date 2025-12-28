@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Search, Plus } from "lucide-react";
+import { Loader2, Search, Plus, ArrowLeft } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 
 interface MallaModalProps {
@@ -51,6 +52,7 @@ interface Carrera {
 const API_BASE_URL = 'http://localhost:4000/api';
 
 export default function MallaModal({ open, onClose, onMallaSelected }: MallaModalProps) {
+  const router = useRouter();
   const { token, getToken } = useAuth();
   const [mallasExistentes, setMallasExistentes] = useState<any[]>([]);
   const [mallaSeleccionadaId, setMallaSeleccionadaId] = useState("");
@@ -365,30 +367,40 @@ export default function MallaModal({ open, onClose, onMallaSelected }: MallaModa
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={handleCancelar}>
-            Cancelar
+        <DialogFooter className="flex flex-col sm:flex-row gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => router.push('/dashboard/admin')}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Menú
           </Button>
-          {!modoCrear ? (
-            <Button
-              onClick={handleSeleccionarMallaExistente}
-              disabled={!mallaSeleccionadaId}
-              className="bg-[#00563F] hover:bg-[#004830]"
-            >
-              Continuar con esta Malla
+          <div className="flex gap-2 flex-1 justify-end">
+            <Button variant="outline" onClick={handleCancelar}>
+              Cancelar
             </Button>
-          ) : (
-            <Button
-              onClick={handleCrearMalla}
-              disabled={
-                !nuevoCodigoMalla || !selectedFacultad || !selectedCarrera || loading
-              }
-              className="bg-[#00563F] hover:bg-[#004830]"
-            >
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Crear y Continuar
-            </Button>
-          )}
+            {!modoCrear ? (
+              <Button
+                onClick={handleSeleccionarMallaExistente}
+                disabled={!mallaSeleccionadaId}
+                className="bg-[#00563F] hover:bg-[#004830]"
+              >
+                Continuar con esta Malla
+              </Button>
+            ) : (
+              <Button
+                onClick={handleCrearMalla}
+                disabled={
+                  !nuevoCodigoMalla || !selectedFacultad || !selectedCarrera || loading
+                }
+                className="bg-[#00563F] hover:bg-[#004830]"
+              >
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Crear y Continuar
+              </Button>
+            )}
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
