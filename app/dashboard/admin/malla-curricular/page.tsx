@@ -25,8 +25,9 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Loader2, CheckCircle, XCircle, BookOpen, Grid3x3, Eye } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, BookOpen, Grid3x3, Eye, Home } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
+import { useRouter } from "next/navigation";
 
 // --- Interfaces ---
 interface Facultad {
@@ -79,6 +80,7 @@ const API_BASE_URL = 'http://localhost:4000/api';
 
 export default function MallaCurricularPage() {
   const { token, getToken } = useAuth();
+  const router = useRouter();
 
   // Estados
   const [facultades, setFacultades] = useState<Facultad[]>([]);
@@ -226,9 +228,19 @@ export default function MallaCurricularPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50">
       <div className="container mx-auto p-6">
-        <div className="mb-6">
-          <h1 className="text-4xl font-bold text-[#00563F] mb-2">Gestión de Malla Curricular</h1>
-          <p className="text-gray-600">Visualización de mallas curriculares registradas y sus asignaturas</p>
+        <div className="mb-6 flex justify-between items-start">
+          <div>
+            <h1 className="text-4xl font-bold text-[#00563F] mb-2">Gestión de Malla Curricular</h1>
+            <p className="text-gray-600">Visualización de mallas curriculares registradas y sus asignaturas</p>
+          </div>
+          <Button
+            onClick={() => router.push('/dashboard/admin')}
+            variant="outline"
+            className="border-emerald-500 text-emerald-600 hover:bg-emerald-50"
+          >
+            <Home className="h-4 w-4 mr-2" />
+            MENÚ
+          </Button>
         </div>
 
         {/* Filtros */}

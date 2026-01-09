@@ -8,10 +8,15 @@ exports.getAll = async (req, res) => {
     const periodos = await Periodo.findAll({
       order: [['id', 'ASC']]
     });
-    
+    // Mapear fechas para frontend
+    const periodosMap = periodos.map(p => ({
+      ...p.toJSON(),
+      fechaInicio: p.fecha_inicio,
+      fechaFin: p.fecha_fin
+    }));
     return res.status(200).json({
       success: true,
-      data: periodos // Corregido
+      data: periodosMap
     });
   } catch (error) {
     console.error('Error al obtener periodos:', error);
@@ -28,18 +33,21 @@ exports.getById = async (req, res) => {
   try {
     const { id } = req.params;
     
-    const periodos = await Periodo.findByPk(id); // Renombrado
-    
-    if (!periodos) { // Renombrado
+    const periodo = await Periodo.findByPk(id);
+    if (!periodo) {
       return res.status(404).json({
         success: false,
         message: `Periodo con ID ${id} no encontrado`
       });
     }
-    
+    const periodoMap = {
+      ...periodo.toJSON(),
+      fechaInicio: periodo.fecha_inicio,
+      fechaFin: periodo.fecha_fin
+    };
     return res.status(200).json({
       success: true,
-      data: periodos // Renombrado
+      data: periodoMap
     });
   } catch (error) {
      console.error('Error al obtener los periodos:', error);
@@ -55,8 +63,7 @@ exports.getById = async (req, res) => {
 // Crear una nuevo periodo
 exports.create = async (req, res) => {
   try {
-    const { nombre, estado } = req.body;
-    
+    const { nombre, estado, fechaInicio, fechaFin } = req.body;
     // Validaciones básicas
     if (!nombre) {
       return res.status(400).json({
@@ -64,7 +71,6 @@ exports.create = async (req, res) => {
         message: 'El nombre del periodo es obligatorio'
       });
     }
-    
     // Verificar si ya existe un periodo con el mismo nombre
     const existente = await Periodo.findOne({ where: { nombre } });
     if (existente) {
@@ -73,12 +79,10 @@ exports.create = async (req, res) => {
         message: `Ya existe un periodo con el nombre ${nombre}`
       });
     }
-    
     // Generar código automático
     const ultimoPeriodo = await Periodo.findOne({
       order: [['id', 'DESC']]
     });
-    
     let nuevoCodigo = 'P-001';
     if (ultimoPeriodo && ultimoPeriodo.codigo) {
       // Extraer el número del último código y sumar 1
@@ -86,18 +90,23 @@ exports.create = async (req, res) => {
       const nuevoNumero = ultimoNumero + 1;
       nuevoCodigo = `P-${String(nuevoNumero).padStart(3, '0')}`;
     }
-    
     // Crear el nuevo periodo
     const nuevoPeriodo = await Periodo.create({
       codigo: nuevoCodigo,
       nombre,
-      estado: estado || 'proximo'
+      estado: estado || 'proximo',
+      fecha_inicio: fechaInicio || null,
+      fecha_fin: fechaFin || null
     });
-    
+    const periodoMap = {
+      ...nuevoPeriodo.toJSON(),
+      fechaInicio: nuevoPeriodo.fecha_inicio,
+      fechaFin: nuevoPeriodo.fecha_fin
+    };
     return res.status(201).json({
       success: true,
       message: 'Periodo creado exitosamente',
-      data: nuevoPeriodo
+      data: periodoMap
     });
   } catch (error) {
     console.error('Error al crear el periodo:', error);
@@ -113,18 +122,15 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, estado } = req.body;
-    
+    const { nombre, estado, fechaInicio, fechaFin } = req.body;
     // Buscar el periodo a actualizar
     const periodo = await Periodo.findByPk(id);
-    
     if (!periodo) {
       return res.status(404).json({
         success: false,
         message: `Periodo con ID ${id} no encontrado`
       });
     }
-    
     // Si se cambia el nombre, verificar que no exista otro con ese nombre
     if (nombre && nombre !== periodo.nombre) {
       const existente = await Periodo.findOne({ where: { nombre } });
@@ -135,17 +141,22 @@ exports.update = async (req, res) => {
         });
       }
     }
-    
     // Actualizar los campos (el código no se modifica)
     await periodo.update({
       nombre: nombre || periodo.nombre,
-      estado: estado || periodo.estado
+      estado: estado || periodo.estado,
+      fecha_inicio: fechaInicio !== undefined ? fechaInicio : periodo.fecha_inicio,
+      fecha_fin: fechaFin !== undefined ? fechaFin : periodo.fecha_fin
     });
-    
+    const periodoMap = {
+      ...periodo.toJSON(),
+      fechaInicio: periodo.fecha_inicio,
+      fechaFin: periodo.fecha_fin
+    };
     return res.status(200).json({
       success: true,
       message: 'Periodo actualizado exitosamente',
-      data: periodo
+      data: periodoMap
     });
   } catch (error) {
     console.error('Error al actualizar el periodo:', error);

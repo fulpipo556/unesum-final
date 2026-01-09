@@ -2,6 +2,7 @@
 
 import type React from "react"
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { MainHeader } from "@/components/layout/main-header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Pencil, Trash2, Plus, Save, Loader2 } from "lucide-react"
+import { Pencil, Trash2, Plus, Save, Loader2, Home } from "lucide-react"
 
 import { useAuth } from "@/contexts/auth-context"
 
@@ -39,6 +40,7 @@ function useToast() {
 export default function GestionAcademicaPage() {
   const { token, getToken } = useAuth() 
   const { toast } = useToast()
+  const router = useRouter()
 
   // --- Estados del Componente ---
   const [facultades, setFacultades] = useState<Facultad[]>([])
@@ -218,6 +220,15 @@ export default function GestionAcademicaPage() {
                   <div className="flex gap-2">
                     <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700" disabled={submittingFacultad}>{submittingFacultad ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}<span className="ml-2 hidden md:inline">GUARDAR</span></Button>
                     <Button type="button" onClick={handleNewFacultad} variant="outline"><Plus className="h-4 w-4" /><span className="ml-2 hidden md:inline">NUEVO</span></Button>
+                   <Button
+                      type="button"
+                      onClick={() => router.push('/dashboard/admin')}
+                      variant="outline"
+                      className="border-emerald-500 text-emerald-600 hover:bg-emerald-50 px-6 bg-transparent"
+                    >
+                      <Home className="h-4 w-4 mr-2" />
+                      MENÚ
+                    </Button>
                   </div>
                 </form>
                 <div className="mt-6 overflow-x-auto">
@@ -255,6 +266,15 @@ export default function GestionAcademicaPage() {
                     <div className="md:col-span-2 flex gap-4">
                         <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700" disabled={submittingCarrera}>{submittingCarrera ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />GUARDANDO...</> : <><Save className="mr-2 h-4 w-4" />GUARDAR</>}</Button>
                         <Button type="button" onClick={handleNewCarrera} variant="outline"><Plus className="mr-2 h-4 w-4" />NUEVO</Button>
+                     <Button
+                      type="button"
+                      onClick={() => router.push('/dashboard/admin')}
+                      variant="outline"
+                      className="border-emerald-500 text-emerald-600 hover:bg-emerald-50 px-6 bg-transparent"
+                    >
+                      <Home className="h-4 w-4 mr-2" />
+                      MENÚ
+                    </Button>
                     </div>
                 </form>
                 <div className="mt-6 overflow-x-auto">

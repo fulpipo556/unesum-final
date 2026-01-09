@@ -2,6 +2,7 @@
 
 import type React from "react"
 import { useState, useEffect, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { MainHeader } from "@/components/layout/main-header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Pencil, Trash2, Plus, Save, Loader2, UserPlus } from "lucide-react"
+import { Pencil, Trash2, Plus, Save, Loader2, UserPlus, Home } from "lucide-react"
 
 import { useAuth } from "@/contexts/auth-context"
 
@@ -70,7 +71,7 @@ function useToast() {
 export default function GestionDocentesPage() {
   const { token, getToken } = useAuth() 
   const { toast } = useToast()
-
+  const router = useRouter()
   // --- Estados del Componente ---
   const [profesores, setProfesores] = useState<Profesor[]>([])
   const [facultades, setFacultades] = useState<Facultad[]>([])
@@ -476,7 +477,9 @@ export default function GestionDocentesPage() {
                 <CardDescription>
                   {editingId 
                     ? "Actualice los datos del docente." 
-                    : "Registre un nuevo docente individualmente o importe múltiples desde un archivo CSV."
+                    : (!filtros.malla || filtros.malla === "todas" 
+                        ? "⚠️ Seleccione una malla curricular para habilitar la gestión de docentes"
+                        : "Registre un nuevo docente individualmente o importe múltiples desde un archivo CSV.")
                   }
                 </CardDescription>
               </CardHeader>
@@ -484,18 +487,18 @@ export default function GestionDocentesPage() {
               {/* =========== INICIO DE LA CORRECCIÓN =========== */}
               <CardContent>
                 {/* --- SECCIÓN DE CARGA MASIVA (FUERA DEL OTRO FORMULARIO) --- */}
-                <div className="mb-8 p-4 border rounded-lg">
+                <div className={`mb-8 p-4 border rounded-lg ${!filtros.malla || filtros.malla === "todas" ? "opacity-50 pointer-events-none" : ""}`}>
                   <Label className="text-lg font-semibold">Carga Masiva desde CSV</Label>
                   <p className="text-sm text-muted-foreground mb-4">
                     Las columnas deben ser: nombres, apellidos, email, carrera_nombre.
                   </p>
                   <div className="flex flex-col md:flex-row gap-4 items-center">
                     <div className="grid w-full max-w-sm items-center gap-1.5">
-                      <Input id="csv-file" type="file" accept=".csv" onChange={handleFileChange} />
+                      <Input id="csv-file" type="file" accept=".csv" onChange={handleFileChange} disabled={!filtros.malla || filtros.malla === "todas"} />
                     </div>
                     <Button 
                       onClick={handleUpload} 
-                      disabled={uploading || !selectedFile} 
+                      disabled={uploading || !selectedFile || !filtros.malla || filtros.malla === "todas"} 
                       className="bg-blue-600 hover:bg-blue-700 self-start"
                     >
                       {uploading ? (
@@ -514,7 +517,7 @@ export default function GestionDocentesPage() {
                 <Label className="text-lg font-semibold">
                   {editingId ? "Editar Docente" : "Registrar Nuevo Docente"}
                 </Label>
-                <form onSubmit={handleSubmit} className="grid gap-6 mt-4">
+                <form onSubmit={handleSubmit} className={`grid gap-6 mt-4 ${!filtros.malla || filtros.malla === "todas" ? "opacity-50 pointer-events-none" : ""}`}>
                     {/* El resto de tus inputs (Nombres, Apellidos, etc.) va aquí SIN CAMBIOS */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="grid gap-2"><Label htmlFor="nombres">Nombres</Label><Input id="nombres" name="nombres" placeholder="Ej: Juan Carlos" value={formData.nombres} onChange={(e) => setFormData({...formData, nombres: e.target.value})} required /></div>
@@ -531,8 +534,17 @@ export default function GestionDocentesPage() {
                         <div className="flex items-center space-x-2"><Label className={!formData.activo ? "text-red-600" : "text-gray-500"}>Inactivo</Label><Switch checked={formData.activo} onCheckedChange={(c) => setFormData(p => ({ ...p, activo: c }))} /><Label className={formData.activo ? "text-green-600" : "text-gray-500"}>Activo</Label></div>
                     </div>
                     <div className="flex gap-4 pt-4">
-                        <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700" disabled={submitting}>{submitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />GUARDANDO...</> : <><Save className="mr-2 h-4 w-4" />GUARDAR</>}</Button>
-                        <Button type="button" onClick={handleNew} variant="outline" className="border-blue-500 text-blue-600 hover:bg-blue-50" disabled={submitting}><Plus className="mr-2 h-4 w-4" />NUEVO</Button>
+                        <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700" disabled={submitting || !filtros.malla || filtros.malla === "todas"}>{submitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />GUARDANDO...</> : <><Save className="mr-2 h-4 w-4" />GUARDAR</>}</Button>
+                        <Button type="button" onClick={handleNew} variant="outline" className="border-blue-500 text-blue-600 hover:bg-blue-50" disabled={submitting || !filtros.malla || filtros.malla === "todas"}><Plus className="mr-2 h-4 w-4" />NUEVO</Button>
+                       <Button
+                          type="button"
+                          onClick={() => router.push('/dashboard/admin')}
+                          variant="outline"
+                          className="border-emerald-500 text-emerald-600 hover:bg-emerald-50 px-6 bg-transparent"
+                        >
+                          <Home className="h-4 w-4 mr-2" />
+                          MENÚ
+                    </Button>
                     </div>
                 </form>
               </CardContent>

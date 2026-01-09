@@ -1385,7 +1385,7 @@ exports.descargarPlantilla = async (req, res) => {
   }
 };
 
-// Listar todos los programas analÃ­ticos
+// Listar todos los programas analíticos
 exports.getAll = async (req, res) => {
   try {
     const programas = await ProgramaAnalitico.findAll({
@@ -1400,16 +1400,28 @@ exports.getAll = async (req, res) => {
       order: [['createdAt', 'DESC']]
     });
 
+    // Formatear datos para compatibilidad con el frontend
+    const programasFormateados = programas.map(p => ({
+      id: p.id,
+      nombre: p.nombre,
+      periodo: p.datos_tabla?.periodo || '',
+      carrera: p.datos_tabla?.carrera || '',
+      datos_programa: p.datos_tabla || {},
+      created_at: p.createdAt,
+      updated_at: p.updatedAt,
+      creador: p.creador
+    }));
+
     return res.status(200).json({
       success: true,
-      data: programas
+      data: programasFormateados
     });
 
   } catch (error) {
-    console.error('Error al obtener programas analÃ­ticos:', error);
+    console.error('Error al obtener programas analíticos:', error);
     return res.status(500).json({
       success: false,
-      message: 'Error al obtener programas analÃ­ticos',
+      message: 'Error al obtener programas analíticos',
       error: error.message
     });
   }
@@ -3160,7 +3172,120 @@ exports.eliminarAgrupaciones = async (req, res) => {
   }
 };
 
+/**
+ * 📝 CREAR PROGRAMA ANALÍTICO SIMPLE (para editor)
+ * Crea un programa analítico con datos básicos
+ */
+exports.create = async (req, res) => {
+  try {
+    const { nombre, periodo, carrera, datos_programa } = req.body;
+    const userId = req.user?.id;
+
+    if (!nombre) {
+      return res.status(400).json({
+        success: false,
+        message: 'El nombre es obligatorio'
+      });
+    }
+
+    const nuevoPrograma = await ProgramaAnalitico.create({
+      nombre,
+      datos_tabla: {
+        periodo: periodo || nombre,
+        carrera: carrera || '',
+        ...(datos_programa || {})
+      },
+      usuario_id: userId,
+      plantilla_id: null
+    });
+
+    // Transformar datos_tabla a datos_programa para el frontend
+    const responseData = {
+      id: nuevoPrograma.id,
+      nombre: nuevoPrograma.nombre,
+      periodo: nuevoPrograma.datos_tabla?.periodo || '',
+      carrera: nuevoPrograma.datos_tabla?.carrera || '',
+      datos_programa: nuevoPrograma.datos_tabla || {},
+      created_at: nuevoPrograma.createdAt,
+      updated_at: nuevoPrograma.updatedAt
+    };
+
+    return res.status(201).json({
+      success: true,
+      data: responseData,
+      message: 'Programa analítico creado exitosamente'
+    });
+
+  } catch (error) {
+    console.error('Error al crear programa analítico:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al crear programa analítico',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * ✏️ ACTUALIZAR PROGRAMA ANALÍTICO (para editor)
+ * Actualiza los datos de un programa analítico existente
+ */
+exports.update = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nombre, periodo, carrera, datos_programa } = req.body;
+
+    const programa = await ProgramaAnalitico.findByPk(id);
+
+    if (!programa) {
+      return res.status(404).json({
+        success: false,
+        message: 'Programa analítico no encontrado'
+      });
+    }
+
+    const datosTablaActualizados = { ...programa.datos_tabla };
+    
+    if (periodo !== undefined) datosTablaActualizados.periodo = periodo;
+    if (carrera !== undefined) datosTablaActualizados.carrera = carrera;
+    if (datos_programa !== undefined) {
+      Object.assign(datosTablaActualizados, datos_programa);
+    }
+
+    await programa.update({
+      nombre: nombre !== undefined ? nombre : programa.nombre,
+      datos_tabla: datosTablaActualizados
+    });
+
+    // Transformar datos_tabla a datos_programa para el frontend
+    const responseData = {
+      id: programa.id,
+      nombre: programa.nombre,
+      periodo: programa.datos_tabla?.periodo || '',
+      carrera: programa.datos_tabla?.carrera || '',
+      datos_programa: programa.datos_tabla || {},
+      created_at: programa.createdAt,
+      updated_at: programa.updatedAt
+    };
+
+    return res.status(200).json({
+      success: true,
+      data: responseData,
+      message: 'Programa analítico actualizado exitosamente'
+    });
+
+  } catch (error) {
+    console.error('Error al actualizar programa analítico:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al actualizar programa analítico',
+      error: error.message
+    });
+  }
+};
+
 module.exports = exports;
+
 
 
 

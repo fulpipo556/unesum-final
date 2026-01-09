@@ -12,7 +12,8 @@ import { Users, BookOpen, Activity, Calendar, FileSpreadsheet, Settings, Edit3, 
   LucideAirplay,
   LucideArchive,
   Upload,
-  Sparkles } from "lucide-react"
+  Sparkles, 
+  Clipboard} from "lucide-react"
 import Link from "next/link"
 
 export default function AdminDashboard() {
@@ -58,12 +59,19 @@ export default function AdminDashboard() {
       icon: FileText,
       href: "/dashboard/admin/syllabus",
       color: "bg-orange-500",
-    },*/  
+    },  
      {
       title: "Syllabus",
       description: "Gestionar Syllabus",
       icon: Sparkles,
       href: "/dashboard/admin/syllabus/extraer-titulos",
+      color: "bg-orange-500",
+    },*/
+     {
+      title: "Syllabus",
+      description: "Configurar Syllabus",
+      icon: FileText,
+      href: "/dashboard/admin/editor-syllabus",
       color: "bg-orange-500",
     },
     {
@@ -94,23 +102,24 @@ export default function AdminDashboard() {
       icon: FileSpreadsheet,
       href: "/dashboard/admin/import",
       color: "bg-green-500",
-    },*/
+    },
     {
       title: "Programa Analítico",
       description: "Gestionar Programa Analíticos",
       icon: ClipboardList,
       href: "/dashboard/admin/programa-analitico",
       color: "bg-cyan-500",
+    },*/
+    {
+      title: "Programa Analítico",
+      description: "Configurar Programa Analítico",
+      icon: Upload,
+      href: "/dashboard/admin/editor-programa-analitico",
+      color: "bg-cyan-500",
     },
    
     // --- 2. AÑADE EL NUEVO MÓDULO AQUÍ ---
-   {
-      title: "Configuración del Syllabus",
-      description: "Cargar y editar syllabus desde documentos Word",
-      icon: FileText,
-      href: "/dashboard/admin/editor-syllabus",
-      color: "bg-purple-500",
-    },
+  
     /*{
       title: "Configuración",
       description: "Configuración general del sistema",
@@ -153,6 +162,7 @@ export default function AdminDashboard() {
       href: "/dashboard/admin/planificacion-academica",
       color: "bg-orange-500",
     },
+  
   ]
 
   return (

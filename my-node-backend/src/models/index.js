@@ -43,6 +43,13 @@ const initAgrupacionTitulo = require('./AgrupacionTitulo');
 const initTituloExtraidoSyllabus = require('./TituloExtraidoSyllabus');
 const initAgrupacionTituloSyllabus = require('./AgrupacionTituloSyllabus');
 const initSyllabusComisionAcademica = require('./SyllabusComisionAcademica');
+const initActividadesExtracurriculares = require('./actividades_extracurriculares');
+const initRol = require('./rol');
+const initUsuarioRoles = require('./usuario_roles');
+const initUsuarioFacultades = require('./usuario_facultades');
+const initUsuarioCarreras = require('./usuario_carreras');
+const initUsuarioNiveles = require('./usuario_niveles');
+const initUsuarioAsignaturas = require('./usuario_asignaturas');
 
 
 // Inicializa el modelo Usuario
@@ -85,6 +92,13 @@ const AgrupacionTitulo = initAgrupacionTitulo(sequelize, Sequelize.DataTypes);
 const TituloExtraidoSyllabus = initTituloExtraidoSyllabus(sequelize, Sequelize.DataTypes);
 const AgrupacionTituloSyllabus = initAgrupacionTituloSyllabus(sequelize, Sequelize.DataTypes);
 const SyllabusComisionAcademica = initSyllabusComisionAcademica(sequelize, Sequelize.DataTypes);
+const ActividadesExtracurriculares = initActividadesExtracurriculares(sequelize, Sequelize.DataTypes);
+const Rol = initRol(sequelize, Sequelize.DataTypes);
+const UsuarioRol = initUsuarioRoles(sequelize, Sequelize.DataTypes);
+const UsuarioFacultad = initUsuarioFacultades(sequelize, Sequelize.DataTypes);
+const UsuarioCarrera = initUsuarioCarreras(sequelize, Sequelize.DataTypes);
+const UsuarioNivel = initUsuarioNiveles(sequelize, Sequelize.DataTypes);
+const UsuarioAsignatura = initUsuarioAsignaturas(sequelize, Sequelize.DataTypes);
 
 
 // Definir relaciones
@@ -211,6 +225,35 @@ Usuario.hasMany(TituloExtraido, { foreignKey: 'usuario_id', as: 'titulos_extraid
 TituloExtraidoSyllabus.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
 Usuario.hasMany(TituloExtraidoSyllabus, { foreignKey: 'usuario_id', as: 'titulos_syllabus' });
 
+// =========================================================================
+// --- ASOCIACIONES ACTIVIDADES EXTRACURRICULARES ---
+// =========================================================================
+ActividadesExtracurriculares.belongsTo(Periodo, { foreignKey: 'periodo_id', as: 'periodo' });
+Periodo.hasMany(ActividadesExtracurriculares, { foreignKey: 'periodo_id', as: 'actividades_extracurriculares' });
+
+// =========================================================================
+// --- ASOCIACIONES GESTIÓN DE USUARIOS ---
+// =========================================================================
+// Usuarios ↔ Roles (muchos a muchos)
+Usuario.belongsToMany(Rol, { through: UsuarioRol, foreignKey: 'usuario_id', otherKey: 'rol_id', as: 'roles' });
+Rol.belongsToMany(Usuario, { through: UsuarioRol, foreignKey: 'rol_id', otherKey: 'usuario_id', as: 'usuarios' });
+
+// Usuarios ↔ Facultades (muchos a muchos)
+Usuario.belongsToMany(Facultad, { through: UsuarioFacultad, foreignKey: 'usuario_id', otherKey: 'facultad_id', as: 'facultades' });
+Facultad.belongsToMany(Usuario, { through: UsuarioFacultad, foreignKey: 'facultad_id', otherKey: 'usuario_id', as: 'usuarios' });
+
+// Usuarios ↔ Carreras (muchos a muchos)
+Usuario.belongsToMany(Carrera, { through: UsuarioCarrera, foreignKey: 'usuario_id', otherKey: 'carrera_id', as: 'carreras' });
+Carrera.belongsToMany(Usuario, { through: UsuarioCarrera, foreignKey: 'carrera_id', otherKey: 'usuario_id', as: 'usuarios' });
+
+// Usuarios ↔ Niveles/Cursos (muchos a muchos)
+Usuario.belongsToMany(Nivel, { through: UsuarioNivel, foreignKey: 'usuario_id', otherKey: 'nivel_id', as: 'niveles' });
+Nivel.belongsToMany(Usuario, { through: UsuarioNivel, foreignKey: 'nivel_id', otherKey: 'usuario_id', as: 'usuarios' });
+
+// Usuarios ↔ Asignaturas/Materias (muchos a muchos)
+Usuario.belongsToMany(Asignatura, { through: UsuarioAsignatura, foreignKey: 'usuario_id', otherKey: 'asignatura_id', as: 'asignaturas' });
+Asignatura.belongsToMany(Usuario, { through: UsuarioAsignatura, foreignKey: 'asignatura_id', otherKey: 'usuario_id', as: 'usuarios' });
+
 
 module.exports = {
   sequelize,
@@ -247,5 +290,14 @@ module.exports = {
   // Modelos de Syllabus
   TituloExtraidoSyllabus,
   AgrupacionTituloSyllabus,
-  SyllabusComisionAcademica
+  SyllabusComisionAcademica,
+  // Modelos de Actividades Extracurriculares
+  ActividadesExtracurriculares,
+  // Modelo de Roles
+  Rol,
+  UsuarioRol,
+  UsuarioFacultad,
+  UsuarioCarrera,
+  UsuarioNivel,
+  UsuarioAsignatura,
 };

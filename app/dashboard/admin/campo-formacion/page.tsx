@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Trash2, Edit, Save, Plus } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Trash2, Plus, Save, Loader2, Home } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/contexts/auth-context"
 
@@ -38,6 +39,7 @@ const API_BASE_URL = 'http://localhost:4000/api';
 
 export default function RegistroClasificacionPage() {
     const { token, getToken } = useAuth()
+    const router = useRouter()
     const { toast } = useToast()
 
     // --- ESTADOS ---
@@ -263,6 +265,15 @@ export default function RegistroClasificacionPage() {
                         <Button onClick={handleNuevo} variant="outline" className="flex-1 text-lg h-12 border-[#00563F] text-[#00563F] hover:bg-[#00563F]/10">
                             <Plus className="mr-2" />
                             Nuevo
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={() => router.push('/dashboard/admin')}
+                            variant="outline"
+                            className="flex-1 text-lg h-12 border-[#00563F] text-[#00563F] hover:bg-[#00563F]/10"
+                        >
+                            <Home className="mr-2" />
+                            Menú
                         </Button>
                     </div>
                 </CardContent>

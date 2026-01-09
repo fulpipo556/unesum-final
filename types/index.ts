@@ -44,6 +44,8 @@ export interface Periodo {
   codigo?: string // Código automático generado
   nombre: string
   estado: "activo" | "inactivo"
+  fecha_inicio?: string
+  fecha_fin?: string
   createdAt: Date
   updatedAt: Date
 }
@@ -134,10 +136,20 @@ export interface Malla {
   cedula: string
   telefono: string
   correo: string
-  fechaNacimiento: String
+  fechaNacimiento: string
   direccion: string
   facultad: string
   carrera: string
+  estado: "activo" | "inactivo"
+  createdAt: Date
+  updatedAt: Date
+}
+
+// Rol
+export interface Rol {
+  id: string
+  codigo?: string // Código automático generado
+  nombre: string
   estado: "activo" | "inactivo"
   createdAt: Date
   updatedAt: Date

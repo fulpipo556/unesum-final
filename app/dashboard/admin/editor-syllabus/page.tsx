@@ -2,6 +2,7 @@
 
 import type React from "react"
 import { useState, useRef, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { MainHeader } from "@/components/layout/main-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,7 +11,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Minus, Upload, Save, Merge, Trash2, Printer, X, Pencil, Check, ArrowUpFromLine, Copy, FileText } from "lucide-react"
+import { Home, Plus, Minus, Upload, Save, Merge, Trash2, Printer, X, Pencil, Check, ArrowUpFromLine, Copy, FileText } from "lucide-react"
+
 import { useAuth } from "@/contexts/auth-context"
 import * as mammoth from "mammoth"
 import jsPDF from "jspdf"
@@ -39,6 +41,7 @@ interface SavedSyllabusRecord { id: number; nombre: string; periodo: string; mat
 
 export default function EditorSyllabusPage() {
   const { token, getToken } = useAuth()
+  const router = useRouter()
   
   // --- ESTADOS ---
   const [syllabi, setSyllabi] = useState<SyllabusData[]>([])
@@ -601,6 +604,9 @@ export default function EditorSyllabusPage() {
                   <CardTitle className="flex items-center justify-between text-emerald-800">
                     <span>Editor de Syllabus</span>
                     <div className="flex gap-2">
+                       <Button onClick={() => router.push('/dashboard/admin')} variant="outline">
+                        <Home className="h-4 w-4 mr-2" /> Menú
+                      </Button>
                       <Button onClick={handleNewSyllabus} className="bg-emerald-600 hover:bg-emerald-700">
                         <Plus className="h-4 w-4 mr-2" /> Nuevo
                       </Button>
@@ -751,6 +757,10 @@ export default function EditorSyllabusPage() {
                   <CardTitle className="flex flex-wrap items-center justify-between gap-4 text-emerald-800">
                     <span className="truncate">{activeSyllabus.name}</span>
                     <div className="flex-shrink-0 flex items-center gap-2">
+                      <Button onClick={() => router.push('/dashboard/admin')} variant="outline">
+                          <Home className="h-4 w-4 mr-2" /> Menú
+                      </Button>
+                      
                        <Button onClick={() => { setActiveSyllabusId(null); setSyllabi([]); }} variant="outline" size="sm"> <Plus className="h-4 w-4 mr-2" /> Nuevo</Button>
                        <Button onClick={handleSaveToDB} className="bg-blue-600 hover:bg-blue-700" size="sm" disabled={isSaving}>{isSaving ? "Guardando..." : <><Save className="h-4 w-4 mr-2" /> Guardar</>}</Button>
                        <Button onClick={handlePrintToPdf} variant="outline" size="sm" disabled={!activeTab}><Printer className="h-4 w-4 mr-2" /> Imprimir</Button>

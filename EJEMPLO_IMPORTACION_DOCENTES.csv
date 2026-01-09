@@ -1,0 +1,5 @@
+Docente,Carrera,Asinatura,Nivel,Paralelo,Rol
+Fulco Pincay,Tecnologías de la Información,"(Programación I, Programación III)","(Segundo, Cuarto)","((A,B,C), (A,B))",Docente
+Barcia Luis,Tecnologías de la Información,Programación I,Segundo,"D,E",Docente
+María García,Tecnologías de la Información,"(Bases de Datos, Redes)","(Tercero, Cuarto)","((A,B), (C,D))","Docente, Coordinador"
+Juan Pérez,Tecnologías de la Información,Matemáticas,Primero,"A,B,C",Docente

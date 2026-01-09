@@ -1,0 +1,6 @@
+nombres,apellidos,correo_electronico,username,password,roles,facultades,carreras,cursos,materias
+Juan Carlos,Pérez García,jperez@unesum.edu.ec,jperez,Pass123,"administrador;docente","Facultad de Ciencias de la Salud;Facultad de Ingeniería","Enfermería;Ingeniería en Sistemas","Primer Semestre;Segundo Semestre;Tercer Semestre","Programación I;Base de Datos;Desarrollo Web"
+María Elena,González López,mgonzalez@unesum.edu.ec,mgonzalez,Pass456,docente,Facultad de Ciencias de la Salud,"Enfermería;Medicina","Primer Semestre;Segundo Semestre","Anatomía Humana;Fisiología;Farmacología"
+Pedro José,Martínez Silva,pmartinez@unesum.edu.ec,pmartinez,Pass789,"docente;profesor",Facultad de Ingeniería,Ingeniería en Sistemas,"Tercer Semestre;Cuarto Semestre;Quinto Semestre","Programación II;Estructuras de Datos;Sistemas Operativos;Redes de Computadoras"
+Ana Lucía,Rodríguez Vera,arodriguez@unesum.edu.ec,arodriguez,Pass321,docente,"Facultad de Ciencias Económicas;Facultad de Ciencias Sociales","Economía;Trabajo Social","Primer Semestre;Segundo Semestre","Microeconomía;Macroeconomía;Estadística Aplicada"
+Carlos Alberto,Sánchez Mora,csanchez@unesum.edu.ec,csanchez,Pass654,profesor,Facultad de Ingeniería,Ingeniería en Sistemas,"Primer Semestre;Segundo Semestre","Programación I;Cálculo I;Álgebra Lineal"

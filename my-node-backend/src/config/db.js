@@ -14,8 +14,8 @@ const sequelize = new Sequelize(env.databaseUrl, {
 const connectDB = async () => {
   try {
     await sequelize.authenticate();
-    // Sincronizar modelos con la base de datos
-    await sequelize.sync({ alter: true });
+    // Sincronizar modelos con la base de datos (sin alter para evitar problemas con enums)
+    await sequelize.sync({ alter: false });
     console.log('Database connected and models synchronized successfully');
   } catch (error) {
     console.error('Unable to connect to the database:', error);

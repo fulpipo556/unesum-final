@@ -1,0 +1,21 @@
+nombre,codigo,carrera_id
+Anatomía Humana,ENF-101,1
+Fisiología,ENF-102,1
+Enfermería Básica,ENF-103,1
+Farmacología,ENF-201,1
+Cuidados Intensivos,ENF-301,1
+Programación I,INSIS-101,3
+Programación II,INSIS-102,3
+Base de Datos,INSIS-201,3
+Redes de Computadoras,INSIS-202,3
+Ingeniería de Software,INSIS-301,3
+Microeconomía,ECO-101,4
+Macroeconomía,ECO-102,4
+Estadística Aplicada,ECO-201,4
+Econometría,ECO-301,4
+Cálculo I,MAT-101,3
+Álgebra Lineal,MAT-102,3
+Estructuras de Datos,INSIS-103,3
+Sistemas Operativos,INSIS-203,3
+Desarrollo Web,INSIS-302,3
+Inteligencia Artificial,INSIS-401,3

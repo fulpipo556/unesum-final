@@ -3,6 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { MainHeader } from "@/components/layout/main-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,7 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Pencil, Trash2, Plus, Save, Loader2 } from "lucide-react"
+import { Pencil, Trash2, Plus, Save, Loader2, Home } from "lucide-react"
 
 import { useAuth } from "@/contexts/auth-context"
 import type { Periodo } from "@/types"
@@ -40,6 +41,7 @@ function useToast() {
 
 export default function FuncionesSustantivasPage() {
   const { token, getToken } = useAuth() 
+  const router = useRouter()
   const { toast } = useToast()
   const [funciones, setFunciones] = useState<Periodo[]>([])
   const [isEditing, setIsEditing] = useState(false)
@@ -49,6 +51,8 @@ export default function FuncionesSustantivasPage() {
   const [formData, setFormData] = useState({
     nombre: "",
     estado: "activo" as "activo" | "inactivo",
+    fechaInicio: "",
+    fechaFin: "",
   })
 
   // Función para hacer peticiones al API con el token
@@ -112,6 +116,8 @@ const apiRequest = async (url: string, options = {}) => {
     setFormData({
       nombre: "",
       estado: "activo",
+      fechaInicio: "",
+      fechaFin: "",
     });
     setIsEditing(false);
     setEditingId(null);
@@ -133,11 +139,18 @@ const apiRequest = async (url: string, options = {}) => {
       
       if (editingId) {
         // Actualizar función existente - CORREGIDO
+        const payload = {
+          nombre: formData.nombre,
+          estado: formData.estado,
+          fecha_inicio: formData.fechaInicio || null,
+          fecha_fin: formData.fechaFin || null,
+        }
+        
         const response = await apiRequest(
           `/periodo/${editingId}`, // Quitar process.env.NEXT_PUBLIC_API_URL
           {
             method: "PUT",
-            body: JSON.stringify(formData),
+            body: JSON.stringify(payload),
           }
         )
         
@@ -152,11 +165,18 @@ const apiRequest = async (url: string, options = {}) => {
         })
       } else {
         // Crear nueva función - CORREGIDO
+        const payload = {
+          nombre: formData.nombre,
+          estado: formData.estado,
+          fecha_inicio: formData.fechaInicio || null,
+          fecha_fin: formData.fechaFin || null,
+        }
+        
         const response = await apiRequest(
           `/periodo`, // Quitar process.env.NEXT_PUBLIC_API_URL
           {
             method: "POST",
-            body: JSON.stringify(formData),
+            body: JSON.stringify(payload),
           }
         )
         
@@ -226,6 +246,8 @@ const handleEdit = (funcion: Periodo) => {
   setFormData({
     nombre: funcion.nombre,
     estado: funcion.estado,
+    fechaInicio: funcion.fecha_inicio || "",
+    fechaFin: funcion.fecha_fin || "",
   });
   setIsEditing(true);
   setEditingId(funcion.id.toString());
@@ -316,6 +338,36 @@ const handleEdit = (funcion: Periodo) => {
                       </Select>
                     </div>
                   </div>
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="fechaInicio" className="text-sm font-medium">
+                        Fecha de Inicio
+                      </Label>
+                      <Input
+                        id="fechaInicio"
+                        type="date"
+                        value={formData.fechaInicio}
+                        onChange={(e) => {
+                          setFormData({ ...formData, fechaInicio: e.target.value, fechaFin: (formData.fechaFin && e.target.value && formData.fechaFin < e.target.value) ? e.target.value : formData.fechaFin });
+                        }}
+                        className="border-gray-300"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="fechaFin" className="text-sm font-medium">
+                        Fecha de Fin
+                      </Label>
+                      <Input
+                        id="fechaFin"
+                        type="date"
+                        value={formData.fechaFin}
+                        min={formData.fechaInicio || undefined}
+                        onChange={(e) => setFormData({ ...formData, fechaFin: e.target.value })}
+                        className="border-gray-300"
+                        disabled={!formData.fechaInicio}
+                      />
+                    </div>
+                  </div>
 
                     <div className="flex gap-4 pt-4">
                     <Button 
@@ -345,6 +397,15 @@ const handleEdit = (funcion: Periodo) => {
                       <Plus className="h-4 w-4 mr-2" />
                       NUEVO
                     </Button>
+                    <Button
+                      type="button"
+                      onClick={() => router.push('/dashboard/admin')}
+                      variant="outline"
+                      className="border-emerald-500 text-emerald-600 hover:bg-emerald-50 px-6 bg-transparent"
+                    >
+                      <Home className="h-4 w-4 mr-2" />
+                      MENÚ
+                    </Button>
                   </div>
                 </form>
               </CardContent>
@@ -368,6 +429,8 @@ const handleEdit = (funcion: Periodo) => {
                           <TableHead className="font-semibold">N.</TableHead>
                           <TableHead className="font-semibold">Código</TableHead>
                           <TableHead className="font-semibold">Nombre del Periodo</TableHead>
+                          <TableHead className="font-semibold">Fecha Inicio</TableHead>
+                          <TableHead className="font-semibold">Fecha Fin</TableHead>
                           <TableHead className="font-semibold">Estado</TableHead>
                           <TableHead className="font-semibold">Acciones</TableHead>
                         </TableRow>
@@ -378,7 +441,8 @@ const handleEdit = (funcion: Periodo) => {
                             <TableCell className="font-medium">{index + 1}</TableCell>
                             <TableCell className="text-gray-500 font-mono text-sm">{funcion.codigo || 'N/A'}</TableCell>
                             <TableCell>{funcion.nombre}</TableCell>
-                            
+                            <TableCell>{funcion.fecha_inicio ? funcion.fecha_inicio : '-'}</TableCell>
+                            <TableCell>{funcion.fecha_fin ? funcion.fecha_fin : '-'}</TableCell>
                             <TableCell>
                               <Badge
                                 variant={funcion.estado === "activo" ? "default" : "secondary"}

@@ -3,6 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { MainHeader } from "@/components/layout/main-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,7 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Pencil, Trash2, Plus, Save, Loader2 } from "lucide-react"
+import { Pencil, Trash2, Plus, Save, Loader2,Home } from "lucide-react"
 
 import { useAuth } from "@/contexts/auth-context"
 import type { FuncionSustantiva } from "@/types"
@@ -37,6 +38,7 @@ function useToast() {
 
 export default function FuncionesSustantivasPage() {
   const { token, getToken } = useAuth() 
+  const router = useRouter()
   const { toast } = useToast()
   const [funciones, setFunciones] = useState<FuncionSustantiva[]>([])
   const [isEditing, setIsEditing] = useState(false)
@@ -385,6 +387,15 @@ const handleEdit = (funcion: FuncionSustantiva) => {
                     >
                       <Plus className="h-4 w-4 mr-2" />
                       NUEVO
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => router.push('/dashboard/admin')}
+                      variant="outline"
+                      className="border-emerald-500 text-emerald-600 hover:bg-emerald-50 px-6 bg-transparent"
+                    >
+                      <Home className="h-4 w-4 mr-2" />
+                      MENÚ
                     </Button>
                   </div>
                 </form>

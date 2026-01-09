@@ -242,12 +242,515 @@ exports.getAll = async (req, res) => {
         }
       ]
     });
+    console.log(`✅ GET /api/profesores - Retornando ${profesores.length} profesores`);
     return res.status(200).json({ success: true, data: profesores });
   } catch (error) {
-    console.error('Error al obtener profesores:', error);
+    console.error('❌ Error al obtener profesores:', error);
     return res.status(500).json({ success: false, message: 'Error al obtener los profesores', error: error.message });
   }
 };
+
+// --- IMPORTACIÓN MASIVA DESDE CSV CON TUPLAS ---
+exports.uploadCSV = async (req, res) => {
+  try {
+    console.log('📤 Inicio de importación CSV');
+    console.log('📁 Archivo recibido:', req.file);
+    console.log('📁 Body:', req.body);
+    
+    if (!req.file) {
+      console.log('❌ No se recibió archivo');
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No se ha enviado ningún archivo. Asegúrese de seleccionar un archivo CSV.' 
+      });
+    }
+
+    const filePath = req.file.path;
+    console.log('📂 Ruta del archivo:', filePath);
+    console.log('📂 Nombre original:', req.file.originalname);
+    console.log('📂 MIME type:', req.file.mimetype);
+    
+    let workbook, data;
+    try {
+      workbook = xlsx.readFile(filePath);
+      const sheetName = workbook.SheetNames[0];
+      console.log('📋 Nombre de la hoja:', sheetName);
+      const sheet = workbook.Sheets[sheetName];
+      data = xlsx.utils.sheet_to_json(sheet);
+      console.log('📊 Datos parseados:', data.length, 'filas');
+      console.log('🔍 Primera fila:', JSON.stringify(data[0], null, 2));
+      console.log('🔍 Columnas detectadas:', data[0] ? Object.keys(data[0]) : 'ninguna');
+    } catch (parseError) {
+      console.error('❌ Error al parsear CSV:', parseError);
+      fs.unlinkSync(filePath);
+      return res.status(422).json({ 
+        success: false, 
+        message: 'Error al leer el archivo CSV. Verifique que sea un archivo CSV válido con las columnas: Docente,Carrera,Asinatura,Nivel,Paralelo,Rol',
+        error: parseError.message,
+        detalles: 'El archivo debe tener las siguientes columnas en la primera fila: Docente, Carrera, Asinatura, Nivel, Paralelo, Rol'
+      });
+    }
+
+    if (data.length === 0) {
+      fs.unlinkSync(filePath);
+      return res.status(400).json({ 
+        success: false, 
+        message: 'El archivo CSV está vacío o no tiene datos válidos después de la cabecera.' 
+      });
+    }
+
+    const resultados = {
+      exitosos: [],
+      fallidos: [],
+      total: data.length,
+      registrosCreados: 0
+    };
+
+    // Obtener todas las asignaturas, niveles, paralelos y carreras para búsqueda rápida
+    console.log('🔍 Cargando datos de referencia...');
+    const todasAsignaturas = await db.Asignatura.findAll();
+    const todosNiveles = await db.Nivel.findAll();
+    const todosParalelos = await db.Paralelo.findAll();
+    const todasCarreras = await Carrera.findAll();
+    console.log(`✅ Datos cargados: ${todasAsignaturas.length} asignaturas, ${todosNiveles.length} niveles, ${todosParalelos.length} paralelos, ${todasCarreras.length} carreras`);
+
+    for (const fila of data) {
+      try {
+        console.log('🔄 Procesando fila:', fila);
+        const { Docente, Carrera: carreraNombre, Asinatura, Nivel, Paralelo, Rol } = fila;
+
+        if (!Docente || !carreraNombre) {
+          console.log('❌ Falta Docente o Carrera');
+          resultados.fallidos.push({ 
+            fila, 
+            error: 'Docente y Carrera son campos obligatorios' 
+          });
+          continue;
+        }
+
+        // Extraer nombres y apellidos
+        const nombreCompleto = Docente.trim().split(' ');
+        const nombres = nombreCompleto.slice(0, -1).join(' ') || nombreCompleto[0];
+        const apellidos = nombreCompleto.slice(-1).join(' ') || '';
+        console.log(`👤 Procesando: ${nombres} ${apellidos}`);
+
+        // Función para normalizar texto (quitar acentos)
+        const normalizar = (texto) => {
+          return texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        };
+
+        // Buscar carrera (búsqueda flexible sin acentos)
+        const carrera = todasCarreras.find(c => {
+          const nombreCarreraNorm = normalizar(c.nombre);
+          const busquedaNorm = normalizar(carreraNombre.trim());
+          return nombreCarreraNorm.includes(busquedaNorm) || busquedaNorm.includes(nombreCarreraNorm);
+        });
+
+        if (!carrera) {
+          console.log(`❌ Carrera no encontrada: "${carreraNombre}"`);
+          console.log(`   Carreras disponibles: ${todasCarreras.map(c => c.nombre).join(', ')}`);
+          resultados.fallidos.push({ 
+            fila, 
+            error: `Carrera "${carreraNombre}" no encontrada. Disponibles: ${todasCarreras.map(c => c.nombre).slice(0, 3).join(', ')}` 
+          });
+          continue;
+        }
+        console.log(`✅ Carrera encontrada: "${carrera.nombre}"`);
+
+        // Generar email automático si no viene
+        const baseEmail = fila.email || `${nombres.toLowerCase().replace(/\s/g, '.')}.${apellidos.toLowerCase().replace(/\s/g, '.')}@unesum.edu.ec`;
+
+        // Parsear asignaturas múltiples (soporta con o sin paréntesis externos)
+        let asignaturas = [];
+        if (Asinatura) {
+          // Limpiar paréntesis externos si existen: "(Prog I, Prog III)" -> "Prog I, Prog III"
+          let asignaturasTexto = Asinatura.trim();
+          if (asignaturasTexto.startsWith('(') && asignaturasTexto.endsWith(')')) {
+            asignaturasTexto = asignaturasTexto.slice(1, -1);
+          }
+          const asignaturasNombres = asignaturasTexto.split(',').map(a => a.trim());
+          asignaturas = asignaturasNombres.map(nombre => {
+            const busquedaNorm = normalizar(nombre);
+            
+            // Primero: buscar coincidencia exacta
+            let encontrada = todasAsignaturas.find(asig => {
+              const nombreAsigNorm = normalizar(asig.nombre);
+              return nombreAsigNorm === busquedaNorm;
+            });
+            
+            // Si no: buscar que el nombre de la BD contenga la búsqueda
+            if (!encontrada) {
+              encontrada = todasAsignaturas.find(asig => {
+                const nombreAsigNorm = normalizar(asig.nombre);
+                return nombreAsigNorm.includes(busquedaNorm);
+              });
+            }
+            
+            // Si no: buscar que la búsqueda contenga el nombre de la BD  
+            if (!encontrada) {
+              encontrada = todasAsignaturas.find(asig => {
+                const nombreAsigNorm = normalizar(asig.nombre);
+                return busquedaNorm.includes(nombreAsigNorm);
+              });
+            }
+            
+            return encontrada;
+          }).filter(Boolean);
+          console.log(`📚 Asignaturas encontradas: ${asignaturas.length}/${asignaturasNombres.length}`);
+        }
+
+        // Parsear niveles múltiples (soporta con o sin paréntesis externos)
+        let niveles = [];
+        if (Nivel) {
+          // Limpiar paréntesis externos si existen: "(Segundo, Cuarto)" -> "Segundo, Cuarto"
+          let nivelesTexto = Nivel.trim();
+          if (nivelesTexto.startsWith('(') && nivelesTexto.endsWith(')')) {
+            nivelesTexto = nivelesTexto.slice(1, -1);
+          }
+          const nivelesNombres = nivelesTexto.split(',').map(n => n.trim());
+          niveles = nivelesNombres.map(nombre => {
+            const busquedaNorm = normalizar(nombre);
+            
+            // Primero: buscar coincidencia exacta
+            let encontrado = todosNiveles.find(niv => {
+              const nombreNivNorm = normalizar(niv.nombre);
+              return nombreNivNorm === busquedaNorm;
+            });
+            
+            // Si no: buscar que el nombre de la BD contenga la búsqueda
+            if (!encontrado) {
+              encontrado = todosNiveles.find(niv => {
+                const nombreNivNorm = normalizar(niv.nombre);
+                return nombreNivNorm.includes(busquedaNorm);
+              });
+            }
+            
+            // Si no: buscar que la búsqueda contenga el nombre de la BD
+            if (!encontrado) {
+              encontrado = todosNiveles.find(niv => {
+                const nombreNivNorm = normalizar(niv.nombre);
+                return busquedaNorm.includes(nombreNivNorm);
+              });
+            }
+            
+            return encontrado;
+          }).filter(Boolean);
+          console.log(`📊 Niveles encontrados: ${niveles.length}/${nivelesNombres.length}`);
+        }
+
+        // Parsear paralelos agrupados con tuplas
+        // Soporta: "(A,B,C), (A,B)" o "((A,B,C), (A,B))" o "D,E"
+        let paralelosGrupos = [];
+        if (Paralelo) {
+          let paralelosTexto = Paralelo.trim();
+          
+          // Limpiar dobles paréntesis externos: "((A,B), (C,D))" -> "(A,B), (C,D)"
+          if (paralelosTexto.startsWith('((') && paralelosTexto.endsWith('))')) {
+            paralelosTexto = paralelosTexto.slice(1, -1);
+          }
+          
+          // Buscar grupos individuales: "(A,B,C)", "(A,B)"
+          const gruposMatch = paralelosTexto.match(/\(([^)]+)\)/g);
+          
+          if (gruposMatch) {
+            // Hay paréntesis: parsear cada grupo
+            paralelosGrupos = gruposMatch.map(grupo => {
+              const letras = grupo.replace(/[()]/g, '').split(',').map(p => p.trim());
+              return letras.map(letra => {
+                return todosParalelos.find(par => 
+                  par.nombre.toLowerCase() === letra.toLowerCase() ||
+                  par.codigo.toLowerCase() === letra.toLowerCase()
+                );
+              }).filter(Boolean);
+            });
+          } else {
+            // Sin paréntesis: todos los paralelos en un solo grupo
+            const letras = paralelosTexto.split(',').map(p => p.trim());
+            const grupoUnico = letras.map(letra => {
+              return todosParalelos.find(par => 
+                par.nombre.toLowerCase() === letra.toLowerCase() ||
+                par.codigo.toLowerCase() === letra.toLowerCase()
+              );
+            }).filter(Boolean);
+            paralelosGrupos = [grupoUnico];
+          }
+        }
+
+        // Parsear roles múltiples
+        let roles = [];
+        if (Rol) {
+          roles = Rol.split(',').map(r => r.trim()).filter(r => r);
+        }
+
+        // Validar que tengamos datos para crear registros
+        if (asignaturas.length === 0 || niveles.length === 0) {
+          resultados.fallidos.push({ 
+            fila, 
+            error: 'Debe especificar al menos una asignatura y un nivel válidos' 
+          });
+          continue;
+        }
+
+        // Validar que la cantidad de asignaturas = niveles = grupos de paralelos
+        if (asignaturas.length !== niveles.length) {
+          resultados.fallidos.push({ 
+            fila, 
+            error: `Cantidad de asignaturas (${asignaturas.length}) no coincide con niveles (${niveles.length})` 
+          });
+          continue;
+        }
+
+        if (paralelosGrupos.length > 0 && paralelosGrupos.length !== asignaturas.length) {
+          resultados.fallidos.push({ 
+            fila, 
+            error: `Cantidad de grupos de paralelos (${paralelosGrupos.length}) no coincide con asignaturas (${asignaturas.length})` 
+          });
+          continue;
+        }
+
+        // Crear múltiples registros: uno por cada combinación
+        let registrosCreados = 0;
+        const combinaciones = [];
+
+        for (let i = 0; i < asignaturas.length; i++) {
+          const asignatura = asignaturas[i];
+          const nivel = niveles[i];
+          const paralelosDelNivel = paralelosGrupos[i] || [];
+
+          if (paralelosDelNivel.length > 0) {
+            // Crear un registro por cada paralelo
+            for (const paralelo of paralelosDelNivel) {
+              combinaciones.push({ asignatura, nivel, paralelo });
+            }
+          } else {
+            // Sin paralelos especificados
+            combinaciones.push({ asignatura, nivel, paralelo: null });
+          }
+        }
+
+        // Crear los profesores
+        for (let idx = 0; idx < combinaciones.length; idx++) {
+          const { asignatura, nivel, paralelo } = combinaciones[idx];
+          
+          // Email único: agregar sufijo si hay múltiples registros
+          const email = combinaciones.length > 1 
+            ? baseEmail.replace('@', `${idx + 1}@`)
+            : baseEmail;
+
+          // Verificar si ya existe
+          const existente = await Profesor.findOne({ where: { email } });
+          if (existente) {
+            continue; // Saltar este registro
+          }
+
+          // Generar contraseña temporal y token
+          const tempPassword = crypto.randomBytes(8).toString('hex');
+          const hashedPassword = await bcrypt.hash(tempPassword, 12);
+          const { resetToken, hashedToken, expirationDate } = createPasswordResetToken();
+
+          // Crear el profesor
+          await Profesor.create({
+            nombres,
+            apellidos,
+            email,
+            carrera_id: carrera.id,
+            activo: true,
+            asignatura_id: asignatura.id,
+            nivel_id: nivel.id,
+            paralelo_id: paralelo ? paralelo.id : null,
+            roles: roles,
+            password: hashedPassword,
+            passwordResetToken: hashedToken,
+            passwordResetExpires: new Date(expirationDate)
+          });
+
+          registrosCreados++;
+
+          // Enviar email de bienvenida solo al primero
+          if (idx === 0) {
+            try {
+              const profesorTemp = { nombres, apellidos, email: baseEmail };
+              await sendPasswordSetupEmail(profesorTemp, resetToken);
+            } catch (emailError) {
+              console.error(`Error al enviar email a ${email}:`, emailError);
+            }
+          }
+        }
+
+        resultados.exitosos.push({
+          nombre: `${nombres} ${apellidos}`,
+          emailBase: baseEmail,
+          registrosCreados,
+          combinaciones: combinaciones.map(c => ({
+            asignatura: c.asignatura.nombre,
+            nivel: c.nivel.nombre,
+            paralelo: c.paralelo ? c.paralelo.nombre : 'Sin paralelo'
+          })),
+          roles
+        });
+        resultados.registrosCreados += registrosCreados;
+        console.log(`✅ Docente procesado: ${nombres} ${apellidos} - ${registrosCreados} registros creados`);
+
+      } catch (error) {
+        console.error('❌ Error al procesar fila:', error);
+        resultados.fallidos.push({ 
+          fila, 
+          error: error.message 
+        });
+      }
+    }
+
+    // Limpiar archivo temporal
+    fs.unlinkSync(filePath);
+    console.log(`✅ Importación completada: ${resultados.exitosos.length} exitosos, ${resultados.fallidos.length} fallidos, ${resultados.registrosCreados} registros creados`);
+
+    // Si todos fallaron, devolver error 422
+    if (resultados.exitosos.length === 0 && resultados.fallidos.length > 0) {
+      console.log('❌ Todos los registros fallaron. Detalles:');
+      resultados.fallidos.forEach((f, idx) => {
+        console.log(`   ${idx + 1}. ${f.error}`);
+        console.log(`      Fila:`, f.fila);
+      });
+      
+      return res.status(422).json({
+        success: false,
+        message: `Proceso completado con errores. ${resultados.exitosos.length} de ${resultados.total} docentes fueron creados.`,
+        errors: resultados.fallidos.map(f => ({
+          error: f.error,
+          docente: f.fila?.Docente || 'Desconocido',
+          carrera: f.fila?.Carrera || 'N/A',
+          asignatura: f.fila?.Asinatura || 'N/A'
+        }))
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Importación completada: ${resultados.exitosos.length} docentes procesados, ${resultados.registrosCreados} registros creados, ${resultados.fallidos.length} fallidos`,
+      data: resultados
+    });
+
+  } catch (error) {
+    console.error('❌❌ Error FATAL en importación CSV:', error);
+    console.error('Stack:', error.stack);
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (unlinkError) {
+        console.error('Error al eliminar archivo temporal:', unlinkError);
+      }
+    }
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Error al procesar el archivo CSV', 
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};
+
+// --- EXPORTACIÓN CSV CON FORMATO DE TUPLAS ---
+exports.exportCSV = async (req, res) => {
+  try {
+    // Obtener todos los profesores con sus relaciones
+    const profesores = await Profesor.findAll({
+      include: [
+        { model: Carrera, as: 'carrera', attributes: ['nombre'] },
+        { model: db.Asignatura, as: 'asignatura', attributes: ['nombre'] },
+        { model: db.Nivel, as: 'nivel', attributes: ['nombre'] },
+        { model: db.Paralelo, as: 'paralelo', attributes: ['nombre'] }
+      ],
+      order: [['apellidos', 'ASC'], ['nombres', 'ASC']]
+    });
+
+    // Agrupar profesores por nombre completo para detectar duplicados
+    const profesoresAgrupados = {};
+
+    profesores.forEach(prof => {
+      const nombreCompleto = `${prof.nombres} ${prof.apellidos}`.trim();
+      if (!profesoresAgrupados[nombreCompleto]) {
+        profesoresAgrupados[nombreCompleto] = {
+          nombres: prof.nombres,
+          apellidos: prof.apellidos,
+          carrera: prof.carrera?.nombre || '',
+          roles: prof.roles || [],
+          combinaciones: []
+        };
+      }
+
+      // Agregar la combinación asignatura-nivel-paralelo
+      profesoresAgrupados[nombreCompleto].combinaciones.push({
+        asignatura: prof.asignatura?.nombre || '',
+        nivel: prof.nivel?.nombre || '',
+        paralelo: prof.paralelo?.nombre || ''
+      });
+    });
+
+    // Construir filas CSV con formato de tuplas
+    const filasCSV = [];
+
+    Object.values(profesoresAgrupados).forEach(docente => {
+      // Agrupar combinaciones por asignatura-nivel
+      const grupos = {};
+      
+      docente.combinaciones.forEach(combo => {
+        const key = `${combo.asignatura}|||${combo.nivel}`;
+        if (!grupos[key]) {
+          grupos[key] = {
+            asignatura: combo.asignatura,
+            nivel: combo.nivel,
+            paralelos: []
+          };
+        }
+        if (combo.paralelo) {
+          grupos[key].paralelos.push(combo.paralelo);
+        }
+      });
+
+      const gruposArray = Object.values(grupos);
+
+      if (gruposArray.length > 0) {
+        // Construir strings con formato de tuplas
+        const asignaturas = gruposArray.map(g => g.asignatura).join(', ');
+        const niveles = gruposArray.map(g => g.nivel).join(', ');
+        const paralelos = gruposArray.map(g => 
+          g.paralelos.length > 0 ? `(${g.paralelos.join(',')})` : ''
+        ).filter(p => p).join(', ');
+
+        filasCSV.push({
+          Docente: `${docente.nombres} ${docente.apellidos}`,
+          Carrera: docente.carrera,
+          Asinatura: asignaturas,
+          Nivel: niveles,
+          Paralelo: paralelos || '',
+          Rol: docente.roles.join(', ')
+        });
+      }
+    });
+
+    // Crear workbook y worksheet
+    const worksheet = xlsx.utils.json_to_sheet(filasCSV);
+    const workbook = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(workbook, worksheet, 'Docentes');
+
+    // Generar buffer
+    const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'csv' });
+
+    // Enviar archivo
+    res.setHeader('Content-Disposition', 'attachment; filename=docentes_export.csv');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.send(buffer);
+
+  } catch (error) {
+    console.error('❌ Error al exportar CSV:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Error al exportar el archivo CSV', 
+      error: error.message 
+    });
+  }
+};
+
 
 exports.bulkCreate = async (req, res) => {
   if (!req.file) {
@@ -344,7 +847,7 @@ exports.bulkCreate = async (req, res) => {
 // --- CREAR UN NUEVO PROFESOR (MODIFICADO) ---
 exports.create = async (req, res) => {
   try {
-    const { nombres, apellidos, email, carrera, activo, asignatura_id, nivel_id, paralelo_id } = req.body;
+    const { nombres, apellidos, email, carrera, activo, asignatura_id, nivel_id, paralelo_id, roles } = req.body;
 
     if (!nombres || !apellidos || !email || !carrera) {
       return res.status(400).json({ success: false, message: 'Nombres, apellidos, email y carrera son obligatorios.' });
@@ -369,6 +872,7 @@ exports.create = async (req, res) => {
       asignatura_id: asignatura_id || null,
       nivel_id: nivel_id || null,
       paralelo_id: paralelo_id || null,
+      roles: roles && Array.isArray(roles) ? roles : [],
       // --- NUEVO: Añadir los campos de seguridad al crear ---
       password: hashedPassword,
       passwordResetToken: hashedToken,
@@ -391,7 +895,7 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombres, apellidos, email, carrera, activo, asignatura_id, nivel_id, paralelo_id } = req.body;
+    const { nombres, apellidos, email, carrera, activo, asignatura_id, nivel_id, paralelo_id, roles } = req.body;
 
     const profesor = await Profesor.findByPk(id);
     if (!profesor) {
@@ -414,7 +918,8 @@ exports.update = async (req, res) => {
       activo: activo !== undefined ? activo : profesor.activo,
       asignatura_id: asignatura_id !== undefined ? asignatura_id : profesor.asignatura_id,
       nivel_id: nivel_id !== undefined ? nivel_id : profesor.nivel_id,
-      paralelo_id: paralelo_id !== undefined ? paralelo_id : profesor.paralelo_id
+      paralelo_id: paralelo_id !== undefined ? paralelo_id : profesor.paralelo_id,
+      roles: roles !== undefined ? (Array.isArray(roles) ? roles : []) : profesor.roles
     });
 
     return res.status(200).json({ success: true, message: 'Profesor actualizado exitosamente', data: profesor });
@@ -439,5 +944,21 @@ exports.delete = async (req, res) => {
   } catch (error) {
     console.error('Error al eliminar profesor:', error);
     return res.status(500).json({ success: false, message: 'Error al eliminar el profesor', error: error.message });
+  }
+};
+// --- LIMPIAR PROFESORES DUPLICADOS O DE PRUEBA ---
+exports.cleanTestProfessors = async (req, res) => {
+  try {
+    const { emails } = req.body;
+    if (!emails || !Array.isArray(emails) || emails.length === 0) {
+      return res.status(400).json({ success: false, message: 'Debe proporcionar un array de emails para eliminar' });
+    }
+    console.log('?? Limpiando profesores de prueba:', emails);
+    const profesoresEliminados = await Profesor.destroy({ where: { email: { [Op.in]: emails } }, force: true });
+    console.log(`?? Eliminados ${profesoresEliminados} profesores`);
+    return res.status(200).json({ success: true, message: `${profesoresEliminados} profesores eliminados exitosamente`, count: profesoresEliminados });
+  } catch (error) {
+    console.error('? Error al limpiar profesores:', error);
+    return res.status(500).json({ success: false, message: 'Error al limpiar profesores', error: error.message });
   }
 };

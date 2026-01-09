@@ -1,0 +1,6 @@
+nombres,apellidos,correo_electronico,username,password,roles,facultades,carreras,cursos,materias
+Juan Carlos,Pérez García,jperez@unesum.edu.ec,jperez,Pass123,"administrador;docente","1;2","1;3","1;2;3","1;2;3;4"
+María Elena,González López,mgonzalez@unesum.edu.ec,mgonzalez,Pass456,docente,1,"1;2","1;2","1;2;5"
+Pedro José,Martínez Silva,pmartinez@unesum.edu.ec,pmartinez,Pass789,"docente;profesor",2,3,"3;4;5","6;7;8;9;10"
+Ana Lucía,Rodríguez Vera,arodriguez@unesum.edu.ec,arodriguez,Pass321,docente,"1;2","1;3","1;2","1;2;3"
+Carlos Alberto,Sánchez Mora,csanchez@unesum.edu.ec,csanchez,Pass654,profesor,1,1,"1;2","1;2;3;4;5"

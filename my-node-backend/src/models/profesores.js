@@ -68,6 +68,11 @@ module.exports = function(sequelize, DataTypes) {
         model: 'paralelo',
         key: 'id'
       }
+    },
+    roles: {
+      type: DataTypes.ARRAY(DataTypes.STRING),
+      allowNull: true,
+      defaultValue: []
     }
   }, {
     sequelize,
