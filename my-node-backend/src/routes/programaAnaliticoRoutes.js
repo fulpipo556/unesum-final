@@ -62,6 +62,9 @@ router.post('/upload', authenticate, programaAnaliticoController.uploadExcel);
 // Obtener todos los programas analíticos
 router.get('/', authenticate, programaAnaliticoController.getAll);
 
+// Crear un nuevo programa analítico (compatible con editor)
+router.post('/', authenticate, authorize(['profesor', 'administrador', 'comision_academica']), programaAnaliticoController.create);
+
 // Obtener programas disponibles con plantillas (para docentes)
 router.get('/disponibles', authenticate, programaAnaliticoController.getProgramasDisponibles);
 
@@ -115,8 +118,8 @@ router.get('/sesion-extraccion/:sessionId', authenticate, programaAnaliticoContr
 
 // 🗂️ AGRUPACIONES DE TÍTULOS EN PESTAÑAS
 router.get('/sesion-extraccion/:sessionId/agrupaciones', authenticate, programaAnaliticoController.obtenerAgrupaciones);
-router.post('/sesion-extraccion/:sessionId/agrupaciones', authenticate, authorize(['administrador']), programaAnaliticoController.guardarAgrupaciones);
-router.delete('/sesion-extraccion/:sessionId/agrupaciones', authenticate, authorize(['administrador']), programaAnaliticoController.eliminarAgrupaciones);
+router.post('/sesion-extraccion/:sessionId/agrupaciones', authenticate, authorize(['administrador', 'comision_academica']), programaAnaliticoController.guardarAgrupaciones);
+router.delete('/sesion-extraccion/:sessionId/agrupaciones', authenticate, authorize(['administrador', 'comision_academica']), programaAnaliticoController.eliminarAgrupaciones);
 
 
 // =========================================================================
@@ -125,6 +128,9 @@ router.delete('/sesion-extraccion/:sessionId/agrupaciones', authenticate, author
 
 // Obtener un programa analítico por ID
 router.get('/:id', authenticate, programaAnaliticoController.getById);
+
+// Actualizar un programa analítico (compatible con editor)
+router.put('/:id', authenticate, authorize(['profesor', 'administrador', 'comision_academica']), programaAnaliticoController.update);
 
 // Eliminar un programa analítico
 router.delete('/:id', authenticate, programaAnaliticoController.delete);
@@ -138,6 +144,6 @@ router.get('/ia/status', authenticate, iaExtractorController.verificarConfigurac
 
 // Extraer datos de archivo con IA
 router.post('/ia/extraer', authenticate, uploadIA.single('archivo'), iaExtractorController.extraerConIA);
-
+router.post('/extract-sync', upload.fields([{ name: 'archivo', maxCount: 1 }]), programaAnaliticoController.extractForSync);
 module.exports = router;
 

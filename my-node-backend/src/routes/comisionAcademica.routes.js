@@ -5,58 +5,25 @@ const express = require('express');
 const router = express.Router();
 const comisionAcademicaController = require('../controllers/comisionAcademicaController');
 const { authenticate, authorize } = require('../middlewares/auth.middleware');
-const multer = require('multer');
-
-// Configurar multer
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB max
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel'
-    ];
-    if (allowedTypes.includes(file.mimetype) || 
-        file.originalname.match(/\.(xlsx|xls)$/i)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Formato no soportado. Use Excel (.xlsx, .xls).'));
-    }
-  }
-});
 
 /**
  * Rutas para Comisión Académica
  * Base path: /api/comision-academica
  */
 
-// 📊 PROCESAR SYLLABUS COMPLETO (Excel)
-router.post('/procesar-syllabus', 
+// 🏫 OBTENER ESTRUCTURA COMPLETA DE LA FACULTAD (carreras, mallas, asignaturas)
+router.get('/estructura-facultad', 
   authenticate, 
-  authorize(['administrador', 'comision_academica']),
-  upload.fields([{ name: 'archivo', maxCount: 1 }]), 
-  comisionAcademicaController.procesarSyllabusCompleto
+  authorize(['administrador', 'comision_academica', 'comision']),
+  comisionAcademicaController.obtenerEstructuraFacultad
 );
 
-// 📋 LISTAR TODOS LOS SYLLABUS
-router.get('/syllabus', 
-  authenticate,
-  authorize(['administrador', 'comision_academica']),
-  comisionAcademicaController.listarSyllabusComision
-);
-
-// 📄 OBTENER SYLLABUS ESPECÍFICO
-router.get('/syllabus/:sessionId', 
-  authenticate,
-  authorize(['administrador', 'comision_academica', 'profesor', 'docente']),
-  comisionAcademicaController.obtenerSyllabusComision
-);
-
-// 🗑️ ELIMINAR SYLLABUS
-router.delete('/syllabus/:sessionId', 
-  authenticate,
-  authorize(['administrador', 'comision_academica']),
-  comisionAcademicaController.eliminarSyllabusComision
+// 📚 OBTENER ASIGNATURAS DE UNA CARRERA ESPECÍFICA
+router.get('/carreras/:carrera_id/asignaturas', 
+  authenticate, 
+  authorize(['administrador', 'comision_academica', 'comision']),
+  comisionAcademicaController.obtenerAsignaturasCarrera
 );
 
 module.exports = router;
+

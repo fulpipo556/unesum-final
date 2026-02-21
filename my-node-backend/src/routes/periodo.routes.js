@@ -7,10 +7,10 @@ const { authenticate, authorize } = require('../middlewares/auth.middleware');
 router.get('/', authenticate, periodoController.getAll);
 router.get('/:id', authenticate, periodoController.getById);
 
-// Rutas POST, PUT, DELETE: solo administradores
-router.post('/', authenticate, authorize(['administrador']), periodoController.create);
-router.put('/:id', authenticate, authorize(['administrador']), periodoController.update);
-router.patch('/:id/estado', authenticate, authorize(['administrador']), periodoController.changeStatus);
-router.delete('/:id', authenticate, authorize(['administrador']), periodoController.delete);
+// Rutas POST, PUT, DELETE: administradores y comisión académica
+router.post('/', authenticate, authorize(['administrador', 'comision_academica']), periodoController.create);
+router.put('/:id', authenticate, authorize(['administrador', 'comision_academica']), periodoController.update);
+router.patch('/:id/estado', authenticate, authorize(['administrador', 'comision_academica']), periodoController.changeStatus);
+router.delete('/:id', authenticate, authorize(['administrador', 'comision_academica']), periodoController.delete);
 
 module.exports = router;

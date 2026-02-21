@@ -25,16 +25,26 @@ export function ProtectedRoute({ children, allowedRoles, redirectTo = "/login" }
 
   useEffect(() => {
     if (!isLoading && isMounted) {
+      console.log('🔐 ProtectedRoute - Verificando acceso:', {
+        user: user?.rol,
+        allowedRoles,
+        isLoading,
+        isMounted
+      })
+
       if (!user) {
+        console.log('❌ No hay usuario, redirigiendo a login')
         router.push(redirectTo)
         return
       }
 
       if (allowedRoles && !allowedRoles.includes(user.rol as any)) {
+        console.log('❌ Rol no permitido:', user.rol, 'permitidos:', allowedRoles)
         router.push("/unauthorized")
         return
       }
 
+      console.log('✅ Acceso permitido')
       setIsChecking(false)
     }
   }, [user, isLoading, allowedRoles, redirectTo, router, isMounted])

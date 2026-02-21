@@ -16,7 +16,13 @@ const Nivel = db.Nivel; // Necesario para incluir el nivel
 exports.getAllAsignaturas = async (req, res) => {
     try {
         const { nivel_id, carrera_id } = req.query;
+        const user = req.user;
         let whereCondition = {};
+        let includeCarrera = {
+            model: Carrera,
+            as: 'carrera',
+            attributes: ['id', 'nombre', 'facultad_id']
+        };
 
         if (nivel_id) {
             whereCondition.nivel_id = nivel_id;
@@ -25,15 +31,38 @@ exports.getAllAsignaturas = async (req, res) => {
         if (carrera_id) {
             whereCondition.carrera_id = carrera_id;
         }
+        
+        // Si es comision_academica o comision, filtrar por su facultad
+        if (user.rol === 'comision_academica' || user.rol === 'comision') {
+            if (!user.facultad) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El usuario no tiene una facultad asignada'
+                });
+            }
+            
+            // Buscar el ID de la facultad por nombre
+            const Facultad = db.Facultad;
+            const facultadUsuario = await Facultad.findOne({
+                where: { nombre: user.facultad }
+            });
+            
+            if (!facultadUsuario) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Facultad no encontrada'
+                });
+            }
+            
+            // Agregar filtro de facultad en el include de carrera
+            includeCarrera.where = { facultad_id: facultadUsuario.id };
+            includeCarrera.required = true; // INNER JOIN
+        }
 
         const asignaturas = await Asignatura.findAll({
             where: whereCondition,
             include: [
-                {
-                    model: Carrera,
-                    as: 'carrera',
-                    attributes: ['facultad_id']
-                },
+                includeCarrera,
                 {
                     model: Nivel,
                     as: 'nivel',
@@ -112,6 +141,53 @@ exports.getAllAsignaturas = async (req, res) => {
     } catch (error) {
         console.error('Error al obtener las asignaturas:', error);
         return res.status(500).json({ success: false, message: 'Error al obtener las asignaturas', error: error.message });
+    }
+};
+
+// --- OBTENER UNA ASIGNATURA POR ID ---
+// Para cargar información de una asignatura específica en el programa analítico
+// Solo devuelve lo necesario: codigo, nombre, nivel, carrera
+exports.getAsignaturaById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const asignatura = await Asignatura.findByPk(id, {
+            attributes: ['id', 'codigo', 'nombre'],
+            include: [
+                {
+                    model: Nivel,
+                    as: 'nivel',
+                    attributes: ['id', 'nombre']
+                },
+                {
+                    model: Carrera,
+                    as: 'carrera',
+                    attributes: ['id', 'nombre']
+                }
+            ]
+        });
+
+        if (!asignatura) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Asignatura no encontrada' 
+            });
+        }
+
+        // Devolver datos simples
+        const plainAsig = asignatura.get({ plain: true });
+
+        return res.status(200).json({ 
+            success: true,
+            data: plainAsig 
+        });
+    } catch (error) {
+        console.error('Error al obtener la asignatura:', error);
+        return res.status(500).json({ 
+            success: false, 
+            message: 'Error al obtener la asignatura', 
+            error: error.message 
+        });
     }
 };
 

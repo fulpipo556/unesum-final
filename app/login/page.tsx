@@ -39,36 +39,43 @@ const handleSubmit = async (e: React.FormEvent) => {
         //    los datos del usuario. Los leemos directamente del localStorage
         //    para obtener la información más actualizada.
         const userData = JSON.parse(localStorage.getItem('user_data') || '{}');
+        
+        console.log('🔍 DEBUG - Usuario después del login:', userData);
+        console.log('🔍 DEBUG - Rol detectado:', userData.rol);
 
         // 3. Comparamos el rol y redirigimos a la ruta SEPARADA.
         if (userData.rol === 'administrador') {
-          router.push('/dashboard/admin'); // <-- RUTA PARA EL DASHBOARD DEL ADMIN
-
+          console.log('➡️ Redirigiendo a: /dashboard/admin');
+          router.push('/dashboard/admin');
         } else if (userData.rol === 'profesor' || userData.rol === 'docente') {
-          router.push('/dashboard/docente'); // <-- RUTA PARA EL DASHBOARD DEL PROFESOR
-
+          console.log('➡️ Redirigiendo a: /dashboard/docente');
+          router.push('/dashboard/docente');
+        } else if (userData.rol === 'comision' || userData.rol === 'comision_academica') {
+          console.log('➡️ Redirigiendo a: /dashboard/comision');
+          router.push('/dashboard/comision');
         } else {
-          // Si hay otros roles o un caso inesperado, puedes enviarlos a una página por defecto.
+          console.log('❌ Rol no reconocido:', userData.rol);
           setError("Rol de usuario no reconocido. Contacte al soporte.");
-          setIsLoading(false); // Detener la carga
-          return; // Salir de la función
+          setIsLoading(false);
+          return;
         }
         
       } else {
         // Si login() devuelve false, las credenciales son incorrectas.
         setError("Credenciales inválidas. Verifica tu email y contraseña.");
+        setIsLoading(false);
       }
     } catch (error) {
+      console.error('Error en handleSubmit:', error);
       setError("Error al iniciar sesión. Intente nuevamente.");
-    } finally {
-      // Solo detén la carga si hubo un error. Si hay éxito, la redirección se encargará.
-      // setIsLoading(false) se maneja en el bloque if/else.
+      setIsLoading(false);
     }
   };
   const demoUsers = [
     { email: "admin@unesum.edu.ec", password: "admin123", role: "Administrador" },
     { email: "docente@unesum.edu.ec", password: "docente123", role: "Docente" },
-    { email: "decano@unesum.edu.ec", password: "decano123", role: "Decano" },
+  { email: "decano@unesum.edu.ec", password: "decano123", role: "Decano" },
+  { email: "comision@unesum.edu.ec", password: "comision123", role: "Comisión Académica" },
   ]
 
   return (

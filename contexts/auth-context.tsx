@@ -39,16 +39,44 @@ interface AuthContextType extends AuthState {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const savedUser = typeof window !== 'undefined' ? 
-    JSON.parse(localStorage.getItem('user_data') || 'null') : null;
-    const savedToken = typeof window !== 'undefined' ? 
-    localStorage.getItem('token') : null;  
   const [state, setState] = useState<AuthState>({
-    user: savedUser, // Usar usuario guardado como valor inicial
-    isLoading: !savedUser, // Si hay usuario, no mostrar loading
-    error: null ,
-    token: savedToken
+    user: null,
+    isLoading: true,
+    error: null,
+    token: null
   })
+
+  // Cargar datos del localStorage después del montaje del componente
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedUser = localStorage.getItem('user_data')
+      const savedToken = localStorage.getItem('token')
+      
+      console.log('🔄 AuthContext - Cargando datos iniciales:', {
+        hasUser: !!savedUser,
+        hasToken: !!savedToken
+      })
+      
+      if (savedUser && savedToken) {
+        try {
+          const parsedUser = JSON.parse(savedUser)
+          console.log('✅ Usuario cargado desde localStorage:', parsedUser.rol)
+          setState(prev => ({
+            ...prev,
+            user: parsedUser,
+            token: savedToken,
+            isLoading: false
+          }))
+        } catch (error) {
+          console.error('❌ Error parsing saved user:', error)
+          setState(prev => ({ ...prev, isLoading: false }))
+        }
+      } else {
+        console.log('⚠️ No hay datos guardados en localStorage')
+        setState(prev => ({ ...prev, isLoading: false }))
+      }
+    }
+  }, [])
 
   // Configurar interceptor global para axios
   useEffect(() => {
@@ -70,18 +98,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return response;
       },
       (error: AxiosError) => {
-        // MODIFICAR SOLO ESTA LÍNEA: Eliminar la condición de 404
+        // Solo cerrar sesión si es un error 401 en endpoints de autenticación
+        // NO cerrar sesión por errores 401 en otros endpoints
         if (error.response?.status === 401) {
-          // Mantén el resto igual
-          // Limpiar la sesión
-          localStorage.removeItem('token');
-          localStorage.removeItem('token_time');
-          delete axios.defaults.headers.common['Authorization'];
-          setState(prev => ({ ...prev, user: null, token: null, isLoading: false, error: null }));
-          // Redireccionar a login
-          if (typeof window !== 'undefined' && 
-              !window.location.pathname.includes('/login')) {
-            window.location.replace('/login');
+          const url = error.config?.url || '';
+          
+          // Solo cerrar sesión si es un error de autenticación crítico
+          // (no endpoints de datos como /api/periodo)
+          const isCriticalAuthError = url.includes('/auth/') || 
+                                      url.includes('/login') ||
+                                      url.includes('/me');
+          
+          if (isCriticalAuthError) {
+            console.log('❌ Error de autenticación crítico, cerrando sesión');
+            // Limpiar la sesión
+            localStorage.removeItem('token');
+            localStorage.removeItem('token_time');
+            localStorage.removeItem('user_data');
+            delete axios.defaults.headers.common['Authorization'];
+            setState(prev => ({ ...prev, user: null, token: null, isLoading: false, error: null }));
+            
+            // Redireccionar a login
+            if (typeof window !== 'undefined' && 
+                !window.location.pathname.includes('/login')) {
+              window.location.replace('/login');
+            }
+          } else {
+            console.log('⚠️ Error 401 en endpoint no crítico:', url);
+            // Solo propagar el error, no cerrar sesión
           }
         }
         return Promise.reject(error);
@@ -97,10 +141,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Verificar autenticación al cargar
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    
     checkAuth()
     
     // Verificar cada minuto si el token ha expirado
     const sessionCheckTimer = setInterval(() => {
+      if (typeof window === 'undefined') return
+      
       const token = localStorage.getItem('token')
       const tokenTime = localStorage.getItem('token_time')
       
@@ -119,24 +167,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const checkAuth = async () => {
+    if (typeof window === 'undefined') return
+    
     const token = localStorage.getItem('token')
     const tokenTime = localStorage.getItem('token_time')
     const savedUser = localStorage.getItem('user_data')
+    
+    console.log('🔍 checkAuth - Verificando autenticación:', {
+      hasToken: !!token,
+      hasTokenTime: !!tokenTime,
+      hasSavedUser: !!savedUser
+    })
+    
     if (token && state.token !== token) {
       setState(prev => ({ ...prev, token }))
     }
     
     if (!token) {
-      setState(prev => ({ ...prev, isLoading: false, token: null }))
+      console.log('⚠️ No hay token, marcando como no autenticado')
+      setState(prev => ({ ...prev, isLoading: false, token: null, user: null }))
       return
     }
+    
     // Verificar si el token está próximo a expirar basado en el timestamp guardado
     if (tokenTime) {
       const elapsed = Date.now() - parseInt(tokenTime)
       const oneHour = 60 * 60 * 1000 // 1 hora en ms
       
       if (elapsed > oneHour) {
-        console.log('Token expirado por tiempo (verificación inicial)')
+        console.log('❌ Token expirado por tiempo (verificación inicial)')
         logout()
         return
       }
@@ -144,41 +203,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Si no hay tokenTime, establecerlo ahora
       localStorage.setItem('token_time', Date.now().toString())
     }
+    
     if (savedUser && !state.user) {
-      setState(prev => ({ 
-        ...prev, 
-        user: JSON.parse(savedUser),
-        isLoading: false 
-      }))
-    }
-    try {
-      // El token se añade automáticamente por el interceptor
-      const response = await axios.get(`${API_URL}/auth/me`)
-      
-      if (response.data.success) {
+      try {
+        const parsedUser = JSON.parse(savedUser)
+        console.log('✅ Restaurando usuario desde localStorage:', parsedUser.rol)
         setState(prev => ({ 
           ...prev, 
-          user: response.data.user,
+          user: parsedUser,
           isLoading: false 
         }))
-        localStorage.setItem('user_data', JSON.stringify(response.data.user))
-      } else if (savedUser) {
-        // Si la petición falla pero hay datos guardados, no hacer logout
-        console.log('Respuesta sin éxito, usando datos guardados')
-      } else {
+      } catch (error) {
+        console.error('❌ Error parsing saved user:', error)
         logout()
       }
-    } catch (error) {
-      console.log('Error al verificar autenticación', error)
-      if (!savedUser) {
-        logout()
-      }
+    } else {
+      setState(prev => ({ ...prev, isLoading: false }))
     }
+    
+    // NO INTENTAR VERIFICAR CON EL BACKEND
+    // Esto estaba causando que se pierda la sesión
+    // Si necesitas verificar con el backend, hazlo solo manualmente cuando sea necesario
   }
 
   const login = async (email: string, password: string): Promise<boolean> => {
     setState(prev => ({ ...prev, isLoading: true, error: null }))
     try {
+      console.log('🔐 Intentando login para:', email)
+      
       // La URL '/auth/login' ya es la correcta para nuestro backend unificado.
       const response = await axios.post(`${API_URL}/auth/login`, {
         // Los nombres deben coincidir con lo que espera el backend
@@ -186,17 +238,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         contraseña: password
       })
       
+      console.log('📥 Respuesta del backend:', response.data.success ? 'exitosa' : 'fallida')
+      
       if (response.data.success) {
         // El backend devuelve 'user', lo cual ya coincide con tu código. ¡Perfecto!
         const { token, user } = response.data
+        
+        console.log('💾 Guardando datos en localStorage:', {
+          rol: user.rol,
+          email: user.correo_electronico
+        })
         
         localStorage.setItem('token', token)
         localStorage.setItem('token_time', Date.now().toString())
         localStorage.setItem('user_data', JSON.stringify(user))
         
         setState(prev => ({ ...prev, user, token, isLoading: false }))
+        
+        console.log('✅ Login exitoso')
         return true
       } else {
+        console.log('❌ Login fallido:', response.data.message)
         setState(prev => ({ 
           ...prev, 
           error: response.data.message || 'Error de inicio de sesión',
@@ -205,6 +267,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return false
       }
     } catch (error) {
+      console.error('❌ Error en login:', error)
       const axiosError = error as AxiosError<{ message: string }>
       setState(prev => ({ 
         ...prev, 

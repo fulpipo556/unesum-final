@@ -75,7 +75,7 @@ export default function DocenteDashboard() {
   ]
 
   return (
-    <ProtectedRoute allowedRoles={["profesor", "docente"]}>
+    <ProtectedRoute allowedRoles={["profesor", "docente", "comision"]}>
       <div className="min-h-screen bg-gray-50">
         <MainHeader />
 

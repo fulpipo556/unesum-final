@@ -16,6 +16,8 @@ const clasificaRoutes = require('./clasificacion.routes');
 const periodoRoutes = require('./periodo.routes');
 const mallaCurricularRoutes = require('./mallaCurricular.routes');
 const mallaRoutes = require('./malla.routes');
+const carreraRoutes = require('./carrera.routes');
+const facultadRoutes = require('./facultad.routes');
 const syllabusExtractionRoutes = require('./syllabusExtractionRoutes');
 const comisionAcademicaRoutes = require('./comisionAcademica.routes');
 const router = express.Router();
@@ -44,6 +46,8 @@ module.exports = (app) => {
   router.use('/periodos', periodoRoutes);
   router.use('/malla-curricular', mallaCurricularRoutes);
   router.use('/mallas', mallaRoutes);
+  router.use('/carreras', carreraRoutes);
+  router.use('/facultades', facultadRoutes);
   router.use('/syllabus-extraction', syllabusExtractionRoutes);
   router.use('/comision-academica', comisionAcademicaRoutes);
 };

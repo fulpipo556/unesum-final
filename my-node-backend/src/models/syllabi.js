@@ -19,6 +19,14 @@ module.exports = function(sequelize, DataTypes) {
       type: DataTypes.TEXT,
       allowNull: false
     },
+    asignatura_id: {
+      type: DataTypes.BIGINT,
+      allowNull: true,
+      references: {
+        model: 'asignaturas',
+        key: 'id'
+      }
+    },
     datos_syllabus: {
       type: DataTypes.JSONB,
       allowNull: false
@@ -38,6 +46,15 @@ module.exports = function(sequelize, DataTypes) {
         model: 'profesores',
         key: 'id'
       }
+    },
+    es_plantilla_referencia: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    },
+    titulos_extraidos: {
+      type: DataTypes.JSONB,
+      allowNull: true
     }
   }, {
     sequelize,

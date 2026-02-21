@@ -24,7 +24,8 @@ exports.login = async (req, res) => {
       const isPasswordCorrect = await bcrypt.compare(contraseña, admin.contraseña);
       if (isPasswordCorrect) {
         user = admin;
-        rol = 'administrador'; // O admin.rol si lo tienes en la tabla
+        // Usar el rol de la base de datos en lugar de hardcodearlo
+        rol = admin.rol || 'administrador';
       }
     }
 
