@@ -21,6 +21,7 @@ export default function DashboardPage() {
           router.push("/dashboard/admin")
           break
         case "comision":
+        case "comision_academica":
           router.push("/dashboard/comision")
           break
         case "direccion":

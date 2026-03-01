@@ -43,13 +43,10 @@ const initAgrupacionTitulo = require('./AgrupacionTitulo');
 const initTituloExtraidoSyllabus = require('./TituloExtraidoSyllabus');
 const initAgrupacionTituloSyllabus = require('./AgrupacionTituloSyllabus');
 const initSyllabusComisionAcademica = require('./SyllabusComisionAcademica');
-const initActividadesExtracurriculares = require('./actividades_extracurriculares');
-const initRol = require('./rol');
-const initUsuarioRoles = require('./usuario_roles');
-const initUsuarioFacultades = require('./usuario_facultades');
-const initUsuarioCarreras = require('./usuario_carreras');
-const initUsuarioNiveles = require('./usuario_niveles');
-const initUsuarioAsignaturas = require('./usuario_asignaturas');
+const initSyllabusDocente = require('./SyllabusDocente');
+const initProgramaAnaliticoDocente = require('./ProgramaAnaliticoDocente');
+const initProfesorCarrera = require('./profesor_carreras');
+const initProfesorAsignatura = require('./profesor_asignaturas');
 
 
 // Inicializa el modelo Usuario
@@ -92,13 +89,10 @@ const AgrupacionTitulo = initAgrupacionTitulo(sequelize, Sequelize.DataTypes);
 const TituloExtraidoSyllabus = initTituloExtraidoSyllabus(sequelize, Sequelize.DataTypes);
 const AgrupacionTituloSyllabus = initAgrupacionTituloSyllabus(sequelize, Sequelize.DataTypes);
 const SyllabusComisionAcademica = initSyllabusComisionAcademica(sequelize, Sequelize.DataTypes);
-const ActividadesExtracurriculares = initActividadesExtracurriculares(sequelize, Sequelize.DataTypes);
-const Rol = initRol(sequelize, Sequelize.DataTypes);
-const UsuarioRol = initUsuarioRoles(sequelize, Sequelize.DataTypes);
-const UsuarioFacultad = initUsuarioFacultades(sequelize, Sequelize.DataTypes);
-const UsuarioCarrera = initUsuarioCarreras(sequelize, Sequelize.DataTypes);
-const UsuarioNivel = initUsuarioNiveles(sequelize, Sequelize.DataTypes);
-const UsuarioAsignatura = initUsuarioAsignaturas(sequelize, Sequelize.DataTypes);
+const SyllabusDocente = initSyllabusDocente(sequelize, Sequelize.DataTypes);
+const ProgramaAnaliticoDocente = initProgramaAnaliticoDocente(sequelize, Sequelize.DataTypes);
+const ProfesorCarrera = initProfesorCarrera(sequelize, Sequelize.DataTypes);
+const ProfesorAsignatura = initProfesorAsignatura(sequelize, Sequelize.DataTypes);
 
 
 // Definir relaciones
@@ -106,6 +100,8 @@ User.hasMany(Sustantivo, { foreignKey: 'usuario_id', as: 'sustantivos' });
 Sustantivo.belongsTo(User, { foreignKey: 'usuario_id', as: 'usuario' });
 
 ProgramasAnaliticos.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'creador' });
+ProgramasAnaliticos.belongsTo(Asignatura, { foreignKey: 'asignatura_id', as: 'asignatura' });
+Asignatura.hasMany(ProgramasAnaliticos, { foreignKey: 'asignatura_id', as: 'programasAnaliticos' });
 
 // Relación entre Actividades y Funciones Sustantivas
 Actividades.belongsTo(FuncionesSustantivas, { foreignKey: 'funcion_sustantiva_id', as: 'funcionSustantiva' });
@@ -117,8 +113,22 @@ Carrera.belongsTo(Facultad, { foreignKey: 'facultad_id', as: 'facultad' });
 Carrera.hasMany(Profesor, { foreignKey: 'carrera_id', as: 'profesores' });
 Profesor.belongsTo(Carrera, { foreignKey: 'carrera_id', as: 'carrera' });
 
+// Relación muchos-a-muchos: un profesor puede tener múltiples carreras
+Profesor.belongsToMany(Carrera, { through: ProfesorCarrera, foreignKey: 'profesor_id', otherKey: 'carrera_id', as: 'carreras' });
+Carrera.belongsToMany(Profesor, { through: ProfesorCarrera, foreignKey: 'carrera_id', otherKey: 'profesor_id', as: 'profesoresMultiple' });
+Profesor.hasMany(ProfesorCarrera, { foreignKey: 'profesor_id', as: 'profesorCarreras' });
+ProfesorCarrera.belongsTo(Profesor, { foreignKey: 'profesor_id', as: 'profesor' });
+ProfesorCarrera.belongsTo(Carrera, { foreignKey: 'carrera_id', as: 'carrera' });
+
 Profesor.belongsTo(Asignatura, { foreignKey: 'asignatura_id', as: 'asignatura' });
 Asignatura.hasMany(Profesor, { foreignKey: 'asignatura_id', as: 'profesores' });
+
+// Relación muchos-a-muchos: un profesor puede tener múltiples asignaturas
+Profesor.belongsToMany(Asignatura, { through: ProfesorAsignatura, foreignKey: 'profesor_id', otherKey: 'asignatura_id', as: 'asignaturas' });
+Asignatura.belongsToMany(Profesor, { through: ProfesorAsignatura, foreignKey: 'asignatura_id', otherKey: 'profesor_id', as: 'profesoresMultiple' });
+Profesor.hasMany(ProfesorAsignatura, { foreignKey: 'profesor_id', as: 'profesorAsignaturas' });
+ProfesorAsignatura.belongsTo(Profesor, { foreignKey: 'profesor_id', as: 'profesor' });
+ProfesorAsignatura.belongsTo(Asignatura, { foreignKey: 'asignatura_id', as: 'asignatura' });
 
 Profesor.belongsTo(Nivel, { foreignKey: 'nivel_id', as: 'nivel' });
 Nivel.hasMany(Profesor, { foreignKey: 'nivel_id', as: 'profesores' });
@@ -128,6 +138,8 @@ Paralelo.hasMany(Profesor, { foreignKey: 'paralelo_id', as: 'profesores' });
 
 Syllabus.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'creador' });
 Syllabus.belongsTo(Profesor, { foreignKey: 'profesor_id', as: 'profesor' });
+Syllabus.belongsTo(Asignatura, { foreignKey: 'asignatura_id', as: 'asignatura' });
+Asignatura.hasMany(Syllabus, { foreignKey: 'asignatura_id', as: 'syllabi' });
 Profesor.hasMany(Syllabus, { foreignKey: 'profesor_id', as: 'syllabi' });
 
 Carrera.hasMany(Asignatura, { foreignKey: 'carrera_id', as: 'asignaturas' });
@@ -225,34 +237,19 @@ Usuario.hasMany(TituloExtraido, { foreignKey: 'usuario_id', as: 'titulos_extraid
 TituloExtraidoSyllabus.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
 Usuario.hasMany(TituloExtraidoSyllabus, { foreignKey: 'usuario_id', as: 'titulos_syllabus' });
 
-// =========================================================================
-// --- ASOCIACIONES ACTIVIDADES EXTRACURRICULARES ---
-// =========================================================================
-ActividadesExtracurriculares.belongsTo(Periodo, { foreignKey: 'periodo_id', as: 'periodo' });
-Periodo.hasMany(ActividadesExtracurriculares, { foreignKey: 'periodo_id', as: 'actividades_extracurriculares' });
+// Asociaciones SyllabusComisionAcademica
+SyllabusComisionAcademica.belongsTo(Asignatura, { foreignKey: 'asignatura_id', as: 'asignatura' });
+Asignatura.hasMany(SyllabusComisionAcademica, { foreignKey: 'asignatura_id', as: 'syllabusComision' });
 
-// =========================================================================
-// --- ASOCIACIONES GESTIÓN DE USUARIOS ---
-// =========================================================================
-// Usuarios ↔ Roles (muchos a muchos)
-Usuario.belongsToMany(Rol, { through: UsuarioRol, foreignKey: 'usuario_id', otherKey: 'rol_id', as: 'roles' });
-Rol.belongsToMany(Usuario, { through: UsuarioRol, foreignKey: 'rol_id', otherKey: 'usuario_id', as: 'usuarios' });
+// Asociaciones SyllabusDocente
+SyllabusDocente.belongsTo(Profesor, { foreignKey: 'profesor_id', as: 'profesor' });
+Profesor.hasMany(SyllabusDocente, { foreignKey: 'profesor_id', as: 'syllabusDocente' });
+SyllabusDocente.belongsTo(SyllabusComisionAcademica, { foreignKey: 'syllabus_comision_id', as: 'syllabus_comision' });
+SyllabusDocente.belongsTo(Asignatura, { foreignKey: 'asignatura_id', as: 'asignatura' });
 
-// Usuarios ↔ Facultades (muchos a muchos)
-Usuario.belongsToMany(Facultad, { through: UsuarioFacultad, foreignKey: 'usuario_id', otherKey: 'facultad_id', as: 'facultades' });
-Facultad.belongsToMany(Usuario, { through: UsuarioFacultad, foreignKey: 'facultad_id', otherKey: 'usuario_id', as: 'usuarios' });
-
-// Usuarios ↔ Carreras (muchos a muchos)
-Usuario.belongsToMany(Carrera, { through: UsuarioCarrera, foreignKey: 'usuario_id', otherKey: 'carrera_id', as: 'carreras' });
-Carrera.belongsToMany(Usuario, { through: UsuarioCarrera, foreignKey: 'carrera_id', otherKey: 'usuario_id', as: 'usuarios' });
-
-// Usuarios ↔ Niveles/Cursos (muchos a muchos)
-Usuario.belongsToMany(Nivel, { through: UsuarioNivel, foreignKey: 'usuario_id', otherKey: 'nivel_id', as: 'niveles' });
-Nivel.belongsToMany(Usuario, { through: UsuarioNivel, foreignKey: 'nivel_id', otherKey: 'usuario_id', as: 'usuarios' });
-
-// Usuarios ↔ Asignaturas/Materias (muchos a muchos)
-Usuario.belongsToMany(Asignatura, { through: UsuarioAsignatura, foreignKey: 'usuario_id', otherKey: 'asignatura_id', as: 'asignaturas' });
-Asignatura.belongsToMany(Usuario, { through: UsuarioAsignatura, foreignKey: 'asignatura_id', otherKey: 'usuario_id', as: 'usuarios' });
+// Asociaciones ProgramaAnaliticoDocente
+ProgramaAnaliticoDocente.belongsTo(Profesor, { foreignKey: 'profesor_id', as: 'profesor' });
+Profesor.hasMany(ProgramaAnaliticoDocente, { foreignKey: 'profesor_id', as: 'programasDocente' });
 
 
 module.exports = {
@@ -291,13 +288,9 @@ module.exports = {
   TituloExtraidoSyllabus,
   AgrupacionTituloSyllabus,
   SyllabusComisionAcademica,
-  // Modelos de Actividades Extracurriculares
-  ActividadesExtracurriculares,
-  // Modelo de Roles
-  Rol,
-  UsuarioRol,
-  UsuarioFacultad,
-  UsuarioCarrera,
-  UsuarioNivel,
-  UsuarioAsignatura,
+  // Modelos Docente
+  SyllabusDocente,
+  ProgramaAnaliticoDocente,
+  ProfesorCarrera,
+  ProfesorAsignatura
 };

@@ -2,7 +2,6 @@
 
 import type React from "react"
 import { useState, useRef, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { MainHeader } from "@/components/layout/main-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,8 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Home, Plus, Minus, Upload, Save, Merge, Trash2, Printer, X, Pencil, Check, ArrowUpFromLine, Copy, FileText } from "lucide-react"
-
+import { Plus, Minus, Upload, Save, Merge, Trash2, Printer, X, Pencil, Check, ArrowUpFromLine, Copy, FileText } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import * as mammoth from "mammoth"
 import jsPDF from "jspdf"
@@ -40,8 +38,7 @@ interface SyllabusData { id: string | number; name: string; description: string;
 interface SavedSyllabusRecord { id: number; nombre: string; periodo: string; materias: string; datos_syllabus: SyllabusData; created_at: string; updated_at: string; }
 
 export default function EditorSyllabusPage() {
-  const { token, getToken } = useAuth()
-  const router = useRouter()
+  const { token, getToken, user } = useAuth()
   
   // --- ESTADOS ---
   const [syllabi, setSyllabi] = useState<SyllabusData[]>([])
@@ -238,21 +235,204 @@ export default function EditorSyllabusPage() {
     
     if (syllabusToLoad) {
       console.log("✅ Cargando syllabus:", syllabusToLoad.nombre);
-      const editorData = syllabusToLoad.datos_syllabus;
-      editorData.id = syllabusToLoad.id;
-      if (!editorData.tabs || editorData.tabs.length === 0) {
-         editorData.tabs = [{ id: `tab-${Date.now()}`, title: "General", rows: (editorData as any).rows || [] }];
+      console.log("📊 Estructura datos_syllabus:", JSON.stringify(syllabusToLoad.datos_syllabus, null, 2));
+      
+      let editorData = syllabusToLoad.datos_syllabus;
+      
+      // 🔧 FIX CRÍTICO: Convertir formato de validación a formato de editor
+      if ((editorData as any).tipo === 'syllabus_validado' && (editorData as any).titulos && !editorData.tabs) {
+        console.log("🔄 Convirtiendo formato de validación a formato de editor...");
+        console.log("   Títulos encontrados:", (editorData as any).titulos.length);
+        
+        // Crear una tabla con los títulos encontrados
+        const rows = (editorData as any).titulos.map((titulo: string, index: number) => ({
+          id: `row-${Date.now()}-${index}`,
+          cells: [
+            {
+              id: `cell-${Date.now()}-${index}-0`,
+              content: titulo,
+              colSpan: 1,
+              rowSpan: 1,
+              isEditable: true
+            },
+            {
+              id: `cell-${Date.now()}-${index}-1`,
+              content: "",
+              colSpan: 1,
+              rowSpan: 1,
+              isEditable: true
+            }
+          ]
+        }));
+        
+        editorData = {
+          version: "2.0",
+          name: syllabusToLoad.nombre,
+          metadata: {
+            ...editorData.metadata,
+            subject: syllabusToLoad.nombre,
+            period: syllabusToLoad.periodo,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          },
+          tabs: [{
+            id: `tab-${Date.now()}`,
+            title: "Syllabus Importado",
+            rows: rows
+          }]
+        } as any;
+        
+        console.log("✅ Conversión completada - Filas creadas:", rows.length);
       }
+      
+      editorData.id = syllabusToLoad.id;
+      
+      // ✅ VALIDACIÓN Y NORMALIZACIÓN DE LA ESTRUCTURA
+      if (!editorData.tabs || editorData.tabs.length === 0) {
+        console.log("⚠️ No hay tabs, creando estructura desde rows...");
+        
+        // Si tiene rows directamente (formato antiguo)
+        if ((editorData as any).rows && Array.isArray((editorData as any).rows)) {
+          console.log("📋 Encontradas", (editorData as any).rows.length, "filas directas");
+          editorData.tabs = [{ 
+            id: `tab-${Date.now()}`, 
+            title: "General", 
+            rows: (editorData as any).rows 
+          }];
+        } else {
+          // Crear estructura vacía
+          console.log("⚠️ No hay rows, creando estructura vacía");
+          editorData.tabs = [{ 
+            id: `tab-${Date.now()}`, 
+            title: "General", 
+            rows: [] 
+          }];
+        }
+      } else {
+        console.log(`✅ Estructura con ${editorData.tabs.length} tabs encontrada`);
+        editorData.tabs.forEach((tab: any, idx: number) => {
+          console.log(`   Tab ${idx + 1}: "${tab.title}" - ${tab.rows?.length || 0} filas`);
+        });
+      }
+      
+      // Asegurar que el nombre esté presente
+      if (!editorData.name) {
+        editorData.name = syllabusToLoad.nombre;
+      }
+      
       setSyllabi([editorData]);
       setActiveSyllabusId(editorData.id);
       setActiveTabId(editorData.tabs[0]?.id || null);
       
       // Establecer el periodo seleccionado
       setSelectedPeriod(syllabusToLoad.periodo);
-      console.log("✅ Syllabus cargado exitosamente, periodo:", syllabusToLoad.periodo);
+      console.log("✅ Syllabus cargado exitosamente");
+      console.log("   - ID:", editorData.id);
+      console.log("   - Nombre:", editorData.name);
+      console.log("   - Periodo:", syllabusToLoad.periodo);
+      console.log("   - Tabs:", editorData.tabs.length);
+      console.log("   - Filas en tab activo:", editorData.tabs[0]?.rows?.length || 0);
     } else {
       console.error("❌ No se encontró el syllabus con ID:", id);
       console.log("📋 IDs disponibles:", savedSyllabi.map(s => s.id));
+    }
+  };
+
+  // --- NUEVA FUNCIÓN: Upload con validación para comisión académica ---
+  const handleUploadConValidacion = async (file: File) => {
+    try {
+      // Verificar que haya un periodo seleccionado
+      if (!selectedPeriod) {
+        alert("❌ Por favor seleccione un periodo académico antes de subir el documento");
+        setIsLoading(false);
+        return;
+      }
+
+      const periodoNombre = periodos.find(p => p.id.toString() === selectedPeriod)?.nombre || selectedPeriod;
+
+      // Preparar FormData
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('nombre', file.name.replace(/\.docx?$/i, ''));
+      formData.append('periodo', periodoNombre);
+      formData.append('materias', activeSyllabus?.metadata?.subject || 'Sin especificar');
+
+      console.log(`📤 Enviando syllabus para validación - Periodo: ${periodoNombre}`);
+
+      // Enviar al endpoint de validación
+      const currentToken = token || getToken();
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+      const response = await fetch(`${API_URL}/syllabi/upload-validado`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${currentToken}`
+        },
+        body: formData
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        // ✅ VALIDACIÓN EXITOSA
+        const validacion = result.data?.validacion || {};
+        alert(
+          `✅ Syllabus validado y guardado exitosamente\n\n` +
+          `Coincidencia: ${validacion.porcentaje_coincidencia || 100}%\n` +
+          `Mínimo requerido: 95%\n` +
+          `Campos requeridos: ${validacion.total_requeridos || 0}\n` +
+          `Campos encontrados: ${validacion.encontrados || 0}`
+        );
+        
+        // Recargar la lista de syllabi guardados
+        try {
+          const syllabiData = await apiRequest("/api/syllabi");
+          const syllabiArray = Array.isArray(syllabiData?.data) ? syllabiData.data : [];
+          setSavedSyllabi(syllabiArray);
+          
+          // Cargar el syllabus recién guardado
+          if (result.data?.id) {
+            handleLoadSyllabus(result.data.id.toString());
+          }
+        } catch (err) {
+          console.error("Error recargando lista:", err);
+        }
+      } else {
+        // ❌ VALIDACIÓN FALLIDA
+        const detalles = result.detalles || {};
+        const faltantes = detalles.faltantes || [];
+        const extras = detalles.extras || [];
+        
+        let mensaje = `❌ El syllabus NO cumple con la estructura requerida\n\n`;
+        mensaje += `📊 Coincidencia: ${detalles.porcentaje_coincidencia || 0}% (mínimo requerido: 95%)\n`;
+        mensaje += `📋 Total requeridos: ${detalles.total_requeridos || 0}\n`;
+        mensaje += `✅ Encontrados: ${detalles.encontrados || 0}\n\n`;
+        
+        if (faltantes.length > 0) {
+          mensaje += `❌ Campos Faltantes (${faltantes.length}):\n`;
+          faltantes.slice(0, 10).forEach((campo: string) => {
+            mensaje += `   • ${campo}\n`;
+          });
+          if (faltantes.length > 10) {
+            mensaje += `   ... y ${faltantes.length - 10} más\n`;
+          }
+        }
+        
+        if (extras.length > 0) {
+          mensaje += `\n⚠️ Campos Extra (${extras.length}):\n`;
+          extras.slice(0, 5).forEach((campo: string) => {
+            mensaje += `   • ${campo}\n`;
+          });
+        }
+        
+        mensaje += `\n💡 Por favor, revise el documento y asegúrese de que contenga todos los campos requeridos según la plantilla del administrador.`;
+        
+        alert(mensaje);
+      }
+    } catch (error: any) {
+      console.error('❌ Error en validación:', error);
+      alert(`❌ Error al validar el syllabus:\n${error.message || 'Error desconocido'}\n\nPor favor, verifique que existe una plantilla de referencia para este periodo.`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -263,6 +443,14 @@ export default function EditorSyllabusPage() {
     if (fileInputRef.current) fileInputRef.current.value = ""; 
 
     setIsLoading(true);
+
+    // 🆕 Si es comisión académica, usar validación contra plantilla
+    if (user?.rol === 'comision_academica') {
+      await handleUploadConValidacion(file);
+      return;
+    }
+
+    // Admin continúa con el flujo normal
     try {
       const { value: html } = await mammoth.convertToHtml(
         { arrayBuffer: await file.arrayBuffer() },
@@ -463,8 +651,50 @@ export default function EditorSyllabusPage() {
   const cancelEdit = () => { setEditingCell(null); setEditContent("") }
   const handleCellClick = (id: string, e: React.MouseEvent) => { e.ctrlKey||e.metaKey ? setSelectedCells(p => p.includes(id)?p.filter(i=>i!==id):[...p,id]) : setSelectedCells([id]) }
   
-  const addRowAt=(idx:number)=>{if(!tableData.length)return;const rId=`r-${Date.now()}`,nCols=tableData[0].cells.reduce((a,c)=>a+c.colSpan,0);const nR:TableRow={id:rId,cells:Array.from({length:nCols},(_,i)=>({id:`c-${rId}-${i}`,content:"",isHeader:!1,rowSpan:1,colSpan:1,isEditable:!0}))};const nRows=[...tableData];nRows.splice(idx,0,nR);handleUpdateActiveTabRows(nRows)}
-  const addColumnAt=(idx:number)=>{const updated=tableData.map(r=>{const nC:TableCell={id:`c-${r.id}-${Date.now()}`,content:"",isHeader:!1,rowSpan:1,colSpan:1,isEditable:!0};const nCells=[...r.cells];nCells.splice(idx,0,nC);return{...r,cells:nCells}});handleUpdateActiveTabRows(updated)}
+  // 🆕 Función para inicializar tabla vacía
+  const initializeEmptyTable = (rows: number = 5, cols: number = 3) => {
+    console.log(`🎨 Inicializando tabla vacía: ${rows} filas x ${cols} columnas`);
+    const newRows: TableRow[] = [];
+    for (let r = 0; r < rows; r++) {
+      const rowId = `r-${Date.now()}-${r}`;
+      const cells: TableCell[] = [];
+      for (let c = 0; c < cols; c++) {
+        cells.push({
+          id: `c-${rowId}-${c}`,
+          content: "",
+          isHeader: r === 0, // Primera fila como headers
+          rowSpan: 1,
+          colSpan: 1,
+          isEditable: true
+        });
+      }
+      newRows.push({ id: rowId, cells });
+    }
+    handleUpdateActiveTabRows(newRows);
+    console.log("✅ Tabla inicializada con éxito");
+  };
+  
+  const addRowAt=(idx:number)=>{
+    // Si la tabla está vacía, inicializar primero
+    if(!tableData.length) {
+      console.log("⚠️ Tabla vacía, inicializando...");
+      initializeEmptyTable(3, 3);
+      return;
+    }
+    const rId=`r-${Date.now()}`,nCols=tableData[0].cells.reduce((a,c)=>a+c.colSpan,0);
+    const nR:TableRow={id:rId,cells:Array.from({length:nCols},(_,i)=>({id:`c-${rId}-${i}`,content:"",isHeader:!1,rowSpan:1,colSpan:1,isEditable:!0}))};
+    const nRows=[...tableData];nRows.splice(idx,0,nR);handleUpdateActiveTabRows(nRows)
+  }
+  const addColumnAt=(idx:number)=>{
+    // Si la tabla está vacía, inicializar primero
+    if(!tableData.length) {
+      console.log("⚠️ Tabla vacía, inicializando...");
+      initializeEmptyTable(3, 3);
+      return;
+    }
+    const updated=tableData.map(r=>{const nC:TableCell={id:`c-${r.id}-${Date.now()}`,content:"",isHeader:!1,rowSpan:1,colSpan:1,isEditable:!0};const nCells=[...r.cells];nCells.splice(idx,0,nC);return{...r,cells:nCells}});
+    handleUpdateActiveTabRows(updated)
+  }
   
   const handleInsertRow = (direction: "above" | "below") => { const pos = findCellPosition(selectedCells[0]); if(pos) addRowAt(direction === 'above' ? pos.rowIndex : pos.rowIndex + 1); }
   const handleInsertColumn = (direction: "left" | "right") => { const pos = findCellPosition(selectedCells[0]); if(pos) addColumnAt(direction === 'left' ? pos.colIndex : pos.colIndex + 1); }
@@ -591,7 +821,7 @@ export default function EditorSyllabusPage() {
     : savedSyllabi;
   
   return (
-    <ProtectedRoute allowedRoles={["administrador", "profesor"]}>
+    <ProtectedRoute allowedRoles={["administrador", "comision_academica", "profesor"]}>
       <div className="min-h-screen bg-gray-50">
         <MainHeader />
         <main className="max-w-7xl mx-auto px-6 py-8">
@@ -604,9 +834,6 @@ export default function EditorSyllabusPage() {
                   <CardTitle className="flex items-center justify-between text-emerald-800">
                     <span>Editor de Syllabus</span>
                     <div className="flex gap-2">
-                       <Button onClick={() => router.push('/dashboard/admin')} variant="outline">
-                        <Home className="h-4 w-4 mr-2" /> Menú
-                      </Button>
                       <Button onClick={handleNewSyllabus} className="bg-emerald-600 hover:bg-emerald-700">
                         <Plus className="h-4 w-4 mr-2" /> Nuevo
                       </Button>
@@ -757,10 +984,6 @@ export default function EditorSyllabusPage() {
                   <CardTitle className="flex flex-wrap items-center justify-between gap-4 text-emerald-800">
                     <span className="truncate">{activeSyllabus.name}</span>
                     <div className="flex-shrink-0 flex items-center gap-2">
-                      <Button onClick={() => router.push('/dashboard/admin')} variant="outline">
-                          <Home className="h-4 w-4 mr-2" /> Menú
-                      </Button>
-                      
                        <Button onClick={() => { setActiveSyllabusId(null); setSyllabi([]); }} variant="outline" size="sm"> <Plus className="h-4 w-4 mr-2" /> Nuevo</Button>
                        <Button onClick={handleSaveToDB} className="bg-blue-600 hover:bg-blue-700" size="sm" disabled={isSaving}>{isSaving ? "Guardando..." : <><Save className="h-4 w-4 mr-2" /> Guardar</>}</Button>
                        <Button onClick={handlePrintToPdf} variant="outline" size="sm" disabled={!activeTab}><Printer className="h-4 w-4 mr-2" /> Imprimir</Button>
@@ -833,7 +1056,29 @@ export default function EditorSyllabusPage() {
                     <div className="overflow-x-auto border border-gray-200 rounded-lg shadow-sm bg-white">
                       <table className="w-full border-collapse text-sm text-left"> 
                         <tbody className="divide-y divide-gray-200">
-                          {tableData.map((row) => {
+                          {tableData.length === 0 ? (
+                            <tr>
+                              <td className="p-12 text-center">
+                                <div className="flex flex-col items-center gap-4">
+                                  <div className="text-gray-400">
+                                    <svg className="w-16 h-16 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                    </svg>
+                                    <p className="text-lg font-medium text-gray-600">La tabla está vacía</p>
+                                    <p className="text-sm text-gray-500 mt-1">Crea una tabla inicial o sube un archivo Word</p>
+                                  </div>
+                                  <Button 
+                                    onClick={() => initializeEmptyTable(5, 3)} 
+                                    className="bg-emerald-600 hover:bg-emerald-700"
+                                  >
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    Crear Tabla Inicial (5x3)
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : (
+                          tableData.map((row) => {
                             const isFormRow = row.cells.length === 3 && row.cells[1].content.trim() === ':';
 
                             return (
@@ -925,7 +1170,8 @@ export default function EditorSyllabusPage() {
                                 })}
                               </tr>
                             );
-                          })}
+                          })
+                          )}
                         </tbody>
                       </table>
                     </div>

@@ -10,18 +10,28 @@ module.exports = (sequelize, DataTypes) => {
     },
     session_id: {
       type: DataTypes.STRING(255),
-      allowNull: false,
-      comment: 'ID único de la sesión'
+      allowNull: true,
+      comment: 'ID único de la sesión (opcional)'
     },
     nombre_archivo: {
       type: DataTypes.STRING,
-      allowNull: false,
-      comment: 'Nombre del archivo Excel subido'
+      allowNull: true,
+      comment: 'Nombre del archivo subido'
+    },
+    asignatura_id: {
+      type: DataTypes.BIGINT,
+      allowNull: true,
+      comment: 'ID de la asignatura asociada'
     },
     periodo_id: {
       type: DataTypes.INTEGER,
       allowNull: true,
       comment: 'ID del periodo académico'
+    },
+    periodo: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      comment: 'Periodo académico (texto o ID como string)'
     },
     periodo_academico: {
       type: DataTypes.STRING(100),
@@ -33,15 +43,30 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       comment: 'ID del usuario que subió el archivo'
     },
+    nombre: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+      comment: 'Nombre del syllabus'
+    },
+    materias: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+      comment: 'Materia(s) asociada(s)'
+    },
+    datos_syllabus: {
+      type: DataTypes.TEXT('long'),
+      allowNull: true,
+      comment: 'Datos del syllabus en formato JSON (editor)'
+    },
     datos_json: {
       type: DataTypes.TEXT('long'),
-      allowNull: false,
-      comment: 'Datos completos del syllabus en formato JSON'
+      allowNull: true,
+      comment: 'Datos completos del syllabus en formato JSON (excel)'
     },
     estado: {
       type: DataTypes.STRING(20),
-      defaultValue: 'pendiente',
-      comment: 'Estado del procesamiento: procesado, error, pendiente'
+      defaultValue: 'activo',
+      comment: 'Estado: activo, inactivo'
     }
   }, {
     tableName: 'syllabus_comision_academica',
@@ -49,23 +74,32 @@ module.exports = (sequelize, DataTypes) => {
     underscored: true,
     indexes: [
       {
-        name: 'idx_session_id_unique',
+        name: 'idx_sca_asignatura_periodo',
         unique: true,
-        fields: ['session_id']
+        fields: ['asignatura_id', 'periodo']
       },
       {
-        name: 'idx_periodo',
-        fields: ['periodo_id']
+        name: 'idx_sca_periodo',
+        fields: ['periodo']
+      },
+      {
+        name: 'idx_sca_usuario',
+        fields: ['usuario_id']
       }
     ]
   });
 
   SyllabusComisionAcademica.associate = (models) => {
-    // Relación con Periodo
     if (models.Periodo) {
       SyllabusComisionAcademica.belongsTo(models.Periodo, {
         foreignKey: 'periodo_id',
-        as: 'periodo'
+        as: 'periodo_rel'
+      });
+    }
+    if (models.Asignatura) {
+      SyllabusComisionAcademica.belongsTo(models.Asignatura, {
+        foreignKey: 'asignatura_id',
+        as: 'asignatura'
       });
     }
   };

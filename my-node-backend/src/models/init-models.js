@@ -78,8 +78,12 @@ function initModels(sequelize) {
   organizacion.hasMany(asignaturas, { as: "asignaturas", foreignKey: "organizacion_id"});
   profesores.belongsTo(paralelo, { as: "paralelo", foreignKey: "paralelo_id"});
   paralelo.hasMany(profesores, { as: "profesores", foreignKey: "paralelo_id"});
+  syllabi.belongsTo(asignaturas, { as: "asignatura", foreignKey: "asignatura_id"});
+  asignaturas.hasMany(syllabi, { as: "syllabis", foreignKey: "asignatura_id"});
   syllabi.belongsTo(profesores, { as: "profesor", foreignKey: "profesor_id"});
   profesores.hasMany(syllabi, { as: "syllabis", foreignKey: "profesor_id"});
+  programas_analiticos.belongsTo(asignaturas, { as: "asignatura", foreignKey: "asignatura_id"});
+  asignaturas.hasMany(programas_analiticos, { as: "programas_analiticos", foreignKey: "asignatura_id"});
   sustantivos.belongsTo(users, { as: "usuario", foreignKey: "usuario_id"});
   users.hasMany(sustantivos, { as: "sustantivos", foreignKey: "usuario_id"});
   programas_analiticos.belongsTo(usuarios, { as: "usuario", foreignKey: "usuario_id"});

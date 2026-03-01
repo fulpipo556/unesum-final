@@ -53,13 +53,15 @@ const authenticate = async (req, res, next) => {
     let user = null;
 
     // Decide en qué tabla buscar basándose en el rol del token
-    if (decoded.rol === 'administrador') {
+    if (decoded.rol === 'administrador' || decoded.rol === 'comision_academica' || decoded.rol === 'comision') {
+      // Administradores y comisión académica están en la tabla usuarios
       user = await Usuario.findByPk(decoded.id);
-      // Para administradores, también verificamos el estado
+      // Verificamos el estado
       if (user && !user.estado) {
         return res.status(401).json({ success: false, message: 'La cuenta del usuario está inactiva.' });
       }
-    } else if (decoded.rol === 'profesor') {
+    } else if (decoded.rol === 'profesor' || decoded.rol === 'docente') {
+      // Profesores y docentes están en la tabla profesores
       user = await Profesor.findByPk(decoded.id);
       // Aquí podrías añadir una comprobación de estado si la tabla 'profesores' la tuviera
     }

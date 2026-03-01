@@ -19,6 +19,13 @@ const ContenidoPrograma = db.ContenidoPrograma;
 const FilaTablaPrograma = db.FilaTablaPrograma;
 const ValorCampoPrograma = db.ValorCampoPrograma;
 const TituloExtraido = db.TituloExtraido;
+// --- EN programaController.js ---
+
+/**
+ * 🧠 DICCIONARIO MAESTRO DE SECCIONES (ESCALABLE)
+ * La clave 'CONTENIDO' atrapa todas las variaciones de tablas de unidades
+ * para unirlas en una sola.
+ */
 
 /**
  * ðŸ”¥ FUNCIÃ“N PARA LIMPIAR DATOS DUPLICADOS DE SECCIONES
@@ -173,6 +180,62 @@ function limpiarDatosSeccion(seccion) {
 /**
  * FunciÃ³n auxiliar para crear o actualizar una plantilla a partir de las secciones detectadas del Excel
  */
+/**
+ * 🧠 DETECTOR INTELIGENTE DE ENCABEZADOS
+ * Analiza un grupo de filas y determina cuál es la fila de encabezados
+ * basándose en un sistema de puntuación por palabras clave.
+ */
+function detectarMejorFilaEncabezados(filasCandidatas) {
+  // Palabras clave comunes en encabezados de programas analíticos
+  const PALABRAS_CLAVE_HEADER = [
+    'UNIDAD', 'TEMA', 'CAPITULO', 'CONTENIDO', 'SUBTEMA',
+    'HORAS', 'TIEMPO', 'SEMANA', 'FECHA',
+    'DOCENCIA', 'PRACTICA', 'AUTONOMO', 'TEORICA', 'LABORATORIO',
+    'ESTRATEGIA', 'METODOLOGIA', 'ACTIVIDAD', 'RECURSOS',
+    'EVALUACION', 'CALIFICACION', 'PONDERACION', 'NOTA',
+    'BIBLIOGRAFIA', 'OBSERVACION', 'DESCRIPCION', 'RESULTADO'
+  ];
+
+  let mejorFila = null;
+  let mejorPuntuacion = 0;
+  let indiceMejorFila = -1;
+
+  // Analizamos hasta 6 filas buscando la mejor candidata
+  filasCandidatas.forEach((fila, index) => {
+    if (!fila || fila.length === 0) return;
+
+    let puntuacion = 0;
+    const textoFila = fila.join(' ').toUpperCase();
+    
+    // 1. Puntos por palabras clave encontradas
+    PALABRAS_CLAVE_HEADER.forEach(keyword => {
+      if (textoFila.includes(keyword)) {
+        puntuacion += 10;
+      }
+    });
+
+    // 2. Puntos por cantidad de columnas con texto (los headers suelen estar llenos)
+    const columnasLlenas = fila.filter(c => c && c.trim().length > 1).length;
+    if (columnasLlenas > 1) {
+      puntuacion += (columnasLlenas * 2);
+    }
+
+    // 3. Penalización si el texto es demasiado largo (probablemente es contenido, no header)
+    const longitudPromedio = textoFila.length / (columnasLlenas || 1);
+    if (longitudPromedio > 50) { // Si las celdas tienen más de 50 caracteres promedio
+      puntuacion -= 15;
+    }
+
+    // Guardamos el ganador
+    if (puntuacion > mejorPuntuacion && puntuacion > 5) { // Umbral mínimo de 5 puntos
+      mejorPuntuacion = puntuacion;
+      mejorFila = fila;
+      indiceMejorFila = index;
+    }
+  });
+
+  return { encabezados: mejorFila, indiceRelativo: indiceMejorFila };
+}
 async function crearPlantillaDesdeExcel(seccionesDetectadas, nombrePlantilla, usuarioId, transaction) {
   try {
     // Buscar si ya existe una plantilla con ese nombre
@@ -562,98 +625,257 @@ async function extraerTablasDeWordXML(buffer) {
  * Detectar secciones a partir de las filas extraÃ­das del Word
  * Busca patrones conocidos en la PRIMERA COLUMNA de cada fila
  */
+const DICCIONARIO_SECCIONES = [
+  {
+    clave: 'CABECERA',
+    tipo: 'cabecera',
+    patrones: [
+      /PROGRAMA\s*ANAL[IÍ]TICO/i, 
+      /DATOS\s*GENERALES/i, 
+      /UNIVERSIDAD/i, 
+      /VICERRECTORADO/i
+    ]
+  },
+  {
+    clave: 'OBJETIVOS', 
+    tipo: 'texto_largo',
+    patrones: [/OBJETIVOS/i, /PROPÓSITOS/i]
+  },
+  {
+    // 🔥 CORRECCIÓN RESULTADOS: Soporta saltos de línea y textos largos
+    clave: 'RESULTADOS',
+    tipo: 'texto_largo',
+    patrones: [
+      /RESULTADOS?\s*(DE)?\s*APRENDIZAJE/i, 
+      /LOGROS?\s*(DE)?\s*APRENDIZAJE/i,
+      /COMPETENCIAS/i
+    ]
+  },
+  {
+    // 🔥 CORRECCIÓN CONTENIDOS: Detecta los encabezados internos como parte de la sección
+    clave: 'CONTENIDO',
+    tipo: 'tabla',
+    patrones: [
+      /CONTENIDOS?\s*(DE\s*LA)?\s*ASIGNATURA/i,
+      /UNIDADES?\s*TEM[AÁ]TICAS?/i, 
+      /DESARROLLO\s*DE\s*LA\s*ASIGNATURA/i,
+      /PLAN\s*MICROCURRICULAR/i,
+      /TEMARIO/i,
+      // Patrones internos para forzar la detección si el título falla
+      /^UT\s*\d+/i,             
+      /^UNIDAD\s*\d+/i,         
+      /^TEMA\s*\d+/i,
+      /SISTEMA\s*DE\s*CONOCIMIENTOS/i
+    ]
+  },
+  {
+    clave: 'DATOS_GENERALES',
+    tipo: 'datos_generales',
+    patrones: [/^ASIGNATURA$/i, /PERIODO\s*ACAD[EÉ]MICO/i, /^NIVEL$/i, /^PAO$/i]
+  },
+  {
+    clave: 'METODOLOGIA',
+    tipo: 'texto_largo',
+    patrones: [/METODOLOG[IÍ]A/i, /ESTRATEGIAS/i, /ENSEÑANZA.*APRENDIZAJE/i]
+  },
+  {
+    clave: 'EVALUACION',
+    tipo: 'texto_largo',
+    patrones: [/PROCEDIMIENTOS?\s*(DE)?\s*EVALUACI[OÓ]N/i, /SISTEMA\s*DE\s*EVALUACI[OÓ]N/i, /CALIFICACI[OÓ]N/i]
+  },
+  {
+    clave: 'BIBLIOGRAFIA',
+    tipo: 'tabla',
+    patrones: [
+      /BIBLIOGRAF[IÍ]A\s*[-–]?\s*FUENTES/i,
+      /FUENTES\s*DE\s*CONSULTA/i, 
+      /REFERENCIAS\s*BIBLIOGR[AÁ]FICAS/i,
+      /^BIBLIOGRAF[IÍ]A$/i
+    ]
+  },
+  {
+    clave: 'VISADO',
+    tipo: 'tabla',
+    patrones: [/VISADO/i, /FIRMAS/i, /LEGALIZACI[OÓ]N/i, /RESPONSABLE/i]
+  }
+];
+// ==========================================
+// 2. FUNCIÓN DE DETECCIÓN Y FUSIÓN
+// ==========================================
 function detectarSeccionesDeFilasWord(filas) {
-  console.log('\nðŸ” ========== DETECTANDO SECCIONES ==========');
-  
-  // Patrones de secciÃ³n ordenados por especificidad (mÃ¡s especÃ­fico primero)
-  const PATRONES = [
-    { regex: /PROGRAMA\s*ANAL[IÃ]TICO\s*(DE\s*ASIGNATURA)?/i, nombre: 'PROGRAMA ANALÃTICO DE ASIGNATURA', tipo: 'cabecera' },
-    { regex: /OBJETIVOS\s*(DE\s*LA)?\s*ASIGNATURA/i, nombre: 'OBJETIVOS DE LA ASIGNATURA', tipo: 'texto_largo' },
-    { regex: /RESULTADOS?\s*D?\s*E?\s*APRENDIZAJE/i, nombre: 'RESULTADOS DE APRENDIZAJE', tipo: 'texto_largo' },
-    { regex: /CONTENIDOS?\s*(DE\s*LA)?\s*ASIGNATURA/i, nombre: 'CONTENIDOS DE LA ASIGNATURA', tipo: 'tabla' },
-    { regex: /UNIDADES?\s*TEM[AÃ]TICAS?/i, nombre: 'UNIDADES TEMÃTICAS', tipo: 'tabla' },
-    { regex: /PERIODO\s*ACAD[EÃ‰]MICO/i, nombre: 'PERIODO ACADÃ‰MICO', tipo: 'datos_generales' },
-    { regex: /^ASIGNATURA$/i, nombre: 'ASIGNATURA', tipo: 'datos_generales' },
-    { regex: /^NIVEL$/i, nombre: 'NIVEL', tipo: 'datos_generales' },
-    { regex: /CARACTERIZACI[OÃ“]N/i, nombre: 'CARACTERIZACIÃ“N', tipo: 'texto_largo' },
-    { regex: /^COMPETENCIAS$/i, nombre: 'COMPETENCIAS', tipo: 'texto_largo' },
-    { regex: /METODOLOG[IÃ]A/i, nombre: 'METODOLOGÃA', tipo: 'texto_largo' },
-    { regex: /PROCEDIMIENTOS?\s*(DE)?\s*EVALUACI[OÃ“]N/i, nombre: 'PROCEDIMIENTOS DE EVALUACIÃ“N', tipo: 'texto_largo' },
-    { regex: /BIBLIOGRAF[IÃ]A\s*[-â€“]?\s*FUENTES/i, nombre: 'BIBLIOGRAFÃA - FUENTES DE CONSULTA', tipo: 'tabla' },
-    { regex: /BIBLIOGRAF[IÃ]A\s*B[AÃ]SICA/i, nombre: 'BIBLIOGRAFÃA BÃSICA', tipo: 'texto_largo' },
-    { regex: /BIBLIOGRAF[IÃ]A\s*COMPLEMENTARIA/i, nombre: 'BIBLIOGRAFÃA COMPLEMENTARIA', tipo: 'texto_largo' },
-    { regex: /^VISADO:?$/i, nombre: 'VISADO', tipo: 'tabla' },
-    { regex: /DECANO.*FACULTAD|DIRECTOR.*ACAD[EÃ‰]MICO|COORDINADOR.*CARRERA/i, nombre: 'VISADO', tipo: 'tabla' }
-  ];
-  
-  // FunciÃ³n para detectar si una celda es un tÃ­tulo de secciÃ³n
-  const detectarPatron = (texto) => {
-    if (!texto || texto.length < 3) return null;
-    const textoLimpio = texto.replace(/[\r\n]+/g, ' ').trim().toUpperCase();
+  console.log('\n🔍 ========== DETECCIÓN DE ESTRUCTURA V5 (FIX TOTAL) ==========');
+
+  const secciones = [];
+  let seccionActual = null;     
+  let claveActual = null;        
+  let datosSeccion = [];
+  let encabezadosDetectados = null; 
+
+  // Helper de identificación
+  const identificarTipoSeccion = (texto) => {
+    if (!texto || texto.length < 2) return null;
+    const textoNorm = texto.trim().toUpperCase();
     
-    for (const patron of PATRONES) {
-      if (patron.regex.test(textoLimpio)) {
-        return patron;
+    for (const config of DICCIONARIO_SECCIONES) {
+      for (const regex of config.patrones) {
+        if (regex.test(textoNorm)) {
+          return { ...config, tituloEncontrado: textoNorm }; 
+        }
       }
     }
-    return null;
+    return null; 
   };
-  
-  const secciones = [];
-  let seccionActual = null;
-  let datosSeccion = [];
-  
+
   filas.forEach((fila, idx) => {
-    // Buscar patrÃ³n en la primera columna (tÃ­tulos de secciÃ³n)
-    const primeraColumna = fila[0] || '';
-    const patronEncontrado = detectarPatron(primeraColumna);
+    // 1. Limpieza y análisis de celdas
+    const celda1 = fila[0]?.trim() || '';
+    const celda2 = fila[1]?.trim() || '';
+    const textoFilaCompleta = fila.join(' ').toUpperCase();
+
+    // Intentamos identificar con la primera celda, o la segunda si la primera está vacía
+    let nuevaIdentificacion = identificarTipoSeccion(celda1) || identificarTipoSeccion(celda2);
+
+    // --- FIX 1: RESULTADOS ---
+    // Si estamos en Resultados y encontramos una fila que parece texto largo, la forzamos
+    if (claveActual === 'RESULTADOS' && !nuevaIdentificacion) {
+        // Simplemente dejamos que pase al bloque de "filas de contenido"
+    }
+
+    // --- FIX 2: CONTENIDOS / UNIDADES TEMÁTICAS ---
+    // Si detectamos "UNIDADES TEMATICAS" o "DESCRIPCIÓN", NO es nueva sección, es header de Contenido
+    if (claveActual === 'CONTENIDO') {
+        if (textoFilaCompleta.includes('UNIDADES TEMÁTICAS') || 
+            textoFilaCompleta.includes('DESCRIPCIÓN') || 
+            textoFilaCompleta.includes('HORAS')) {
+            
+            // Es un encabezado interno, lo guardamos y continuamos
+            encabezadosDetectados = fila;
+            datosSeccion.push(fila); // Lo agregamos visualmente también
+            return; 
+        }
+        // Si detectamos "UT 1", "TEMA 1", forzamos que siga en CONTENIDO
+        if (/^(UT|UNIDAD|TEMA)\s*\d+/i.test(celda1) || /^(UT|UNIDAD|TEMA)\s*\d+/i.test(celda2)) {
+             nuevaIdentificacion = null; // Anulamos cambio de sección para mantenernos en Contenido
+        }
+    }
+
+    // --- FIX 3: BIBLIOGRAFÍA ---
+    // Sub-etiquetas como "BIBLIOGRAFÍA BÁSICA" y "BIBLIOGRAFÍA COMPLEMENTARIA" 
+    // son contenido INTERNO, no secciones nuevas
+    if (claveActual === 'BIBLIOGRAFIA') {
+        // Si estamos ya en BIBLIOGRAFIA, todo lo que venga es contenido interno
+        nuevaIdentificacion = null;
+    }
     
-    if (patronEncontrado) {
-      // Guardar secciÃ³n anterior
+    // Si detectamos "BÁSICA" o "COMPLEMENTARIA" sueltas, no son secciones nuevas
+    if (nuevaIdentificacion?.clave === 'BIBLIOGRAFIA') {
+        const textoCompleto = celda1.toUpperCase() + ' ' + celda2.toUpperCase();
+        // Solo permitir cambio real si dice "BIBLIOGRAFÍA - FUENTES" o similar como título principal
+        if (claveActual && !textoCompleto.includes('FUENTES') && !textoCompleto.includes('REFERENCIAS')) {
+            // Si ya tenemos una sección activa, probablemente es una sub-etiqueta interna
+            // La dejamos pasar como contenido
+            datosSeccion.push(fila);
+            return;
+        }
+    }
+
+    // =========================================================
+    // LÓGICA DE CAMBIO DE SECCIÓN
+    // =========================================================
+    if (nuevaIdentificacion) {
+      
+      // CASO A: TÍTULO REPETIDO O CONTINUACIÓN (Merge)
+      if (claveActual === nuevaIdentificacion.clave) {
+         // Es el mismo título (ej: repetido en otra página o columna). 
+         // Lo ignoramos o lo agregamos como separador visual si es necesario.
+         return; 
+      }
+
+      // CASO B: SECCIÓN NUEVA REAL -> GUARDAR ANTERIOR
       if (seccionActual && datosSeccion.length > 0) {
         secciones.push({
-          titulo: seccionActual.nombre,
+          titulo: obtenerTituloEstandar(seccionActual.clave, seccionActual.tituloEncontrado),
           tipo: seccionActual.tipo,
-          encabezados: [],
+          encabezados: encabezadosDetectados || [],
           datos: datosSeccion
         });
-        console.log(`  âœ… SecciÃ³n guardada: ${seccionActual.nombre} (${datosSeccion.length} filas)`);
       }
-      
-      // Nueva secciÃ³n
-      seccionActual = patronEncontrado;
+
+      // INICIAR NUEVA
+      console.log(`  🎯 Sección Detectada: ${nuevaIdentificacion.tituloEncontrado}`);
+      seccionActual = nuevaIdentificacion;
+      claveActual = nuevaIdentificacion.clave;
       datosSeccion = [];
-      
-      // Si la fila tiene mÃ¡s columnas, agregarlas como contenido
-      if (fila.length > 1 && fila.slice(1).some(c => c && c.trim())) {
-        datosSeccion.push(fila);
+      encabezadosDetectados = null;
+
+      // Si la fila del título tiene contenido a la derecha, lo guardamos
+      // PERO sin el nombre de la sección en la primera celda
+      const contenidoExtra = fila.slice(1).filter(c => c && c.trim().length > 0);
+      if (contenidoExtra.length > 0) {
+          const filaSinTitulo = [...fila];
+          filaSinTitulo[0] = ''; // Quitamos el título de sección para no duplicar
+          datosSeccion.push(filaSinTitulo);
       }
-      
-      console.log(`  ðŸ“Œ Nueva secciÃ³n: ${patronEncontrado.nombre} (fila ${idx + 1})`);
+
     } else if (seccionActual) {
-      // Agregar fila a la secciÃ³n actual
-      datosSeccion.push(fila);
+      // =========================================================
+      // LÓGICA DE CONTENIDO (FILAS NORMALES)
+      // =========================================================
+      
+      // Saltar filas vacías
+      if (!fila.some(c => c && c.trim().length > 0)) return;
+
+      // 1. Limpieza de Títulos Laterales Repetidos (Merged Cells del Word)
+      // Solo limpiar si la primera celda es EXACTAMENTE el título de la sección
+      // (NO coincidencia parcial, para no borrar contenido real)
+      const celda1Upper = celda1.toUpperCase().trim();
+      const tituloSeccionUpper = seccionActual.tituloEncontrado.toUpperCase().trim();
+      
+      // Coincidencia exacta o casi exacta (la celda es solo el título y nada más)
+      const esTituloRepetido = (
+        celda1Upper === tituloSeccionUpper ||
+        celda1Upper === obtenerTituloEstandar(seccionActual.clave, seccionActual.tituloEncontrado).toUpperCase()
+      );
+      
+      if (esTituloRepetido) {
+          const filaLimpia = [...fila];
+          filaLimpia[0] = ''; // Borramos el título lateral
+          // Solo guardamos si queda algo más
+          if (filaLimpia.some(c => c.trim().length > 0)) {
+              datosSeccion.push(filaLimpia);
+          }
+      } else {
+          // Fila normal de datos — guardar TAL CUAL
+          datosSeccion.push(fila);
+      }
     }
   });
-  
-  // Guardar Ãºltima secciÃ³n
+
+  // Guardar la última al salir del loop
   if (seccionActual && datosSeccion.length > 0) {
     secciones.push({
-      titulo: seccionActual.nombre,
+      titulo: obtenerTituloEstandar(seccionActual.clave, seccionActual.tituloEncontrado),
       tipo: seccionActual.tipo,
-      encabezados: [],
+      encabezados: encabezadosDetectados || [],
       datos: datosSeccion
     });
-    console.log(`  âœ… Ãšltima secciÃ³n: ${seccionActual.nombre} (${datosSeccion.length} filas)`);
   }
-  
-  console.log(`\nðŸ“Š Total secciones detectadas: ${secciones.length}`);
-  secciones.forEach((s, i) => {
-    console.log(`   ${i + 1}. ${s.titulo} (${s.tipo}) - ${s.datos.length} filas`);
-  });
-  
+
   return secciones;
 }
+
+// Helper para limpiar nombres (Asegúrate de tener esta función o una similar)
+function obtenerTituloEstandar(clave, original) {
+    const mapa = {
+        'CONTENIDO': 'CONTENIDOS DE LA ASIGNATURA',
+        'RESULTADOS': 'RESULTADOS DE APRENDIZAJE',
+        'BIBLIOGRAFIA': 'BIBLIOGRAFÍA',
+        'METODOLOGIA': 'METODOLOGÍA',
+        'EVALUACION': 'EVALUACIÓN'
+    };
+    return mapa[clave] || original;
+}
+
 
 /**
  * FunciÃ³n legacy para mammoth (fallback si XML falla)
@@ -1385,43 +1607,70 @@ exports.descargarPlantilla = async (req, res) => {
   }
 };
 
-// Listar todos los programas analíticos
+// Listar todos los programas analÃ­ticos
 exports.getAll = async (req, res) => {
   try {
+    // 🔍 LOG DE PARÁMETROS DE BÚSQUEDA
+    console.log('🔍 ========================================');
+    console.log('🔍 GET /programa-analitico - Parámetros recibidos:');
+    console.log('🔍 Query params:', req.query);
+    console.log('🔍 ========================================');
+
+    // Construir filtros dinámicos
+    const where = {};
+    
+    if (req.query.asignatura_id) {
+      where.asignatura_id = req.query.asignatura_id;
+      console.log('✅ Filtro aplicado: asignatura_id =', req.query.asignatura_id);
+    }
+    
+    if (req.query.periodo) {
+      where.periodo = req.query.periodo;
+      console.log('✅ Filtro aplicado: periodo =', req.query.periodo);
+    }
+
     const programas = await ProgramaAnalitico.findAll({
+      where: where,
       include: [
         {
           model: Usuario,
           as: 'creador',
-          attributes: ['id', 'nombres', 'apellidos', 'correo_electronico'],
+          attributes: ['id', 'nombres', 'apellidos', 'correo_electronico', 'rol'],
           required: false
         }
       ],
       order: [['createdAt', 'DESC']]
     });
 
-    // Formatear datos para compatibilidad con el frontend
-    const programasFormateados = programas.map(p => ({
-      id: p.id,
-      nombre: p.nombre,
-      periodo: p.datos_tabla?.periodo || '',
-      carrera: p.datos_tabla?.carrera || '',
-      datos_programa: p.datos_tabla || {},
-      created_at: p.createdAt,
-      updated_at: p.updatedAt,
-      creador: p.creador
-    }));
+    // 🔍 LOG DE RESULTADOS
+    console.log('📊 Programas encontrados:', programas.length);
+    if (programas.length > 0) {
+      console.log('📋 Primer programa:');
+      console.log('   - ID:', programas[0].id);
+      console.log('   - Nombre:', programas[0].nombre_programa);
+      console.log('   - Asignatura ID:', programas[0].asignatura_id);
+      console.log('   - Periodo:', programas[0].periodo);
+      console.log('   - Tiene datos_tabla:', !!programas[0].datos_tabla);
+      
+      if (programas[0].datos_tabla) {
+        const datosTabla = typeof programas[0].datos_tabla === 'string' 
+          ? JSON.parse(programas[0].datos_tabla) 
+          : programas[0].datos_tabla;
+        console.log('   - Secciones en JSON:', datosTabla?.secciones?.length || 0);
+      }
+    }
+    console.log('🔍 ========================================');
 
     return res.status(200).json({
       success: true,
-      data: programasFormateados
+      data: programas
     });
 
   } catch (error) {
-    console.error('Error al obtener programas analíticos:', error);
+    console.error('Error al obtener programas analÃ­ticos:', error);
     return res.status(500).json({
       success: false,
-      message: 'Error al obtener programas analíticos',
+      message: 'Error al obtener programas analÃ­ticos',
       error: error.message
     });
   }
@@ -3172,120 +3421,218 @@ exports.eliminarAgrupaciones = async (req, res) => {
   }
 };
 
-/**
- * 📝 CREAR PROGRAMA ANALÍTICO SIMPLE (para editor)
- * Crea un programa analítico con datos básicos
- */
+// --- CREAR UN NUEVO PROGRAMA ANALÍTICO (compatible con editor) ---
 exports.create = async (req, res) => {
   try {
-    const { nombre, periodo, carrera, datos_programa } = req.body;
-    const userId = req.user?.id;
+    const { nombre, periodo, materias, asignatura_id, datos_tabla } = req.body;
+    const usuario_id = req.user.id; 
 
-    if (!nombre) {
+    if (!nombre || !periodo || !datos_tabla) {
       return res.status(400).json({
         success: false,
-        message: 'El nombre es obligatorio'
+        message: 'Los campos nombre, periodo y datos_tabla son obligatorios'
       });
     }
 
+    // 🔒 VALIDACIÓN: Verificar si ya existe un programa para esta materia y periodo
+    // SOLO validar duplicados si hay asignatura_id (creado desde gestión de asignaturas)
+    if (asignatura_id) {
+      const whereValidacion = {
+        periodo: periodo,
+        asignatura_id: asignatura_id
+      };
+
+      const programaExistente = await ProgramaAnalitico.findOne({
+        where: whereValidacion
+      });
+
+      if (programaExistente) {
+        const nombreMateria = programaExistente.materias || nombre;
+        
+        return res.status(409).json({
+          success: false,
+          message: `Ya existe un programa analítico para la materia "${nombreMateria}" en el periodo "${periodo}". Solo puede subir un programa por materia por periodo. Puede eliminarlo para subir uno nuevo.`,
+          existente: {
+            id: programaExistente.id,
+            nombre: programaExistente.nombre,
+            materia: nombreMateria,
+            asignatura_id: programaExistente.asignatura_id,
+            fecha_creacion: programaExistente.created_at
+          }
+        });
+      }
+    }
+    
     const nuevoPrograma = await ProgramaAnalitico.create({
       nombre,
-      datos_tabla: {
-        periodo: periodo || nombre,
-        carrera: carrera || '',
-        ...(datos_programa || {})
-      },
-      usuario_id: userId,
-      plantilla_id: null
+      periodo,
+      materias: materias || nombre,
+      asignatura_id: asignatura_id || null,
+      datos_tabla,
+      usuario_id
     });
-
-    // Transformar datos_tabla a datos_programa para el frontend
-    const responseData = {
-      id: nuevoPrograma.id,
-      nombre: nuevoPrograma.nombre,
-      periodo: nuevoPrograma.datos_tabla?.periodo || '',
-      carrera: nuevoPrograma.datos_tabla?.carrera || '',
-      datos_programa: nuevoPrograma.datos_tabla || {},
-      created_at: nuevoPrograma.createdAt,
-      updated_at: nuevoPrograma.updatedAt
-    };
-
+    
     return res.status(201).json({
       success: true,
-      data: responseData,
-      message: 'Programa analítico creado exitosamente'
+      message: 'Programa analítico creado exitosamente',
+      data: nuevoPrograma
     });
-
   } catch (error) {
     console.error('Error al crear programa analítico:', error);
     return res.status(500).json({
       success: false,
-      message: 'Error al crear programa analítico',
+      message: 'Error interno al crear el programa analítico',
       error: error.message
     });
   }
 };
+// controlador/programaController.js
 
-/**
- * ✏️ ACTUALIZAR PROGRAMA ANALÍTICO (para editor)
- * Actualiza los datos de un programa analítico existente
- */
+// --- CONTROLADOR PARA SINCRONIZACIÓN INTELIGENTE (Smart Sync) ---
+// --- CONTROLADOR PARA SINCRONIZACIÓN INTELIGENTE (Smart Sync) ---
+// ... al final de programaController.js
+
+// --- CONTROLADOR PARA SINCRONIZACIÓN INTELIGENTE (Smart Sync) ---
+exports.extractForSync = async (req, res) => {
+  try {
+    console.log('🔄 Iniciando Smart Sync Mejorado...');
+
+    let buffer;
+    if (req.file) {
+        buffer = req.file.buffer;
+    } else if (req.files && req.files.archivo && req.files.archivo[0]) {
+        buffer = req.files.archivo[0].buffer;
+    } else {
+         return res.status(400).json({ 
+             success: false, 
+             message: 'No se subió ningún archivo. Asegúrate de enviar el campo "archivo".' 
+         });
+    }
+
+    // 1. Extraer todas las filas crudas del XML
+    const { filas } = await extraerTablasDeWordXML(buffer);
+    
+    // 2. Usar tu detector inteligente para agrupar por secciones reales
+    // Esto agrupa las filas en bloques lógicos (Ej: Todas las filas de Bibliografía juntas)
+    const seccionesDetectadas = detectarSeccionesDeFilasWord(filas);
+    
+    const mapaDatos = {};
+
+    // 3. Convertir las secciones detectadas en un mapa fácil de consumir por el Frontend
+    seccionesDetectadas.forEach(seccion => {
+      const clave = seccion.titulo.toUpperCase().trim();
+
+      if (seccion.tipo === 'tabla') {
+        // Para tablas (Contenidos, Bibliografía), guardamos el ARRAY de filas
+        // Solo filtramos filas completamente vacías
+        mapaDatos[clave] = seccion.datos.filter(fila => {
+           const textoFila = fila.join('').trim();
+           return textoFila.length > 3;
+        });
+      } else {
+        // Para texto largo (Objetivos, Resultados), unimos todo en un solo String
+        const textoAcumulado = seccion.datos
+          .map(fila => fila.filter(c => c && c.trim().length > 0).join(' '))
+          .join('\n')
+          .trim();
+        
+        mapaDatos[clave] = textoAcumulado;
+      }
+    });
+
+    // 4. Capturar también datos simples (Metadatos: Asignatura, Periodo)
+    // Revisamos las primeras 15 filas buscando patrones "CLAVE: VALOR"
+    filas.slice(0, 15).forEach(fila => {
+       const celdas = fila.filter(c => c && c.trim().length > 0);
+       
+       // Caso A: Dos celdas [ "ASIGNATURA", "Matemáticas" ]
+       if (celdas.length >= 2) {
+         const key = celdas[0].toUpperCase().replace(':', '').trim();
+         // Solo agregamos si no existe ya como sección grande y la clave es corta
+         if (!mapaDatos[key] && key.length < 40) {
+            mapaDatos[key] = celdas.slice(1).join(' ').trim();
+         }
+       }
+       // Caso B: Una celda [ "ASIGNATURA: Matemáticas" ]
+       else if (celdas.length === 1) {
+          const texto = celdas[0];
+          const separador = texto.indexOf(':');
+          if (separador > 2 && separador < 40) {
+             const key = texto.substring(0, separador).toUpperCase().trim();
+             const val = texto.substring(separador + 1).trim();
+             if (!mapaDatos[key]) {
+                mapaDatos[key] = val;
+             }
+          }
+       }
+    });
+
+    console.log(`✅ Smart Sync: ${Object.keys(mapaDatos).length} secciones procesadas.`);
+    
+    // LOG DETALLADO para depuración
+    Object.keys(mapaDatos).forEach(clave => {
+      const valor = mapaDatos[clave];
+      if (Array.isArray(valor)) {
+        console.log(`  📋 ${clave}: ${valor.length} filas`);
+        valor.forEach((fila, i) => console.log(`     [${i}] ${JSON.stringify(fila)}`));
+      } else {
+        console.log(`  📝 ${clave}: "${String(valor).substring(0, 80)}..."`);
+      }
+    });
+
+    return res.json({ 
+        success: true, 
+        data: mapaDatos 
+    });
+
+  } catch (error) {
+    console.error('❌ Error en extractForSync:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+// --- ACTUALIZAR UN PROGRAMA ANALÍTICO ---
 exports.update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, periodo, carrera, datos_programa } = req.body;
-
+    const userId = req.user.id;
+    const userRol = req.user.rol;
+    
     const programa = await ProgramaAnalitico.findByPk(id);
-
+    
     if (!programa) {
-      return res.status(404).json({
-        success: false,
-        message: 'Programa analítico no encontrado'
+      return res.status(404).json({ 
+        success: false, 
+        message: `Programa analítico con ID ${id} no encontrado` 
       });
     }
 
-    const datosTablaActualizados = { ...programa.datos_tabla };
-    
-    if (periodo !== undefined) datosTablaActualizados.periodo = periodo;
-    if (carrera !== undefined) datosTablaActualizados.carrera = carrera;
-    if (datos_programa !== undefined) {
-      Object.assign(datosTablaActualizados, datos_programa);
+    // ¡VERIFICACIÓN DE PERMISOS! El creador, admin o comisión académica puede editar.
+    const rolesPermitidos = ['administrador', 'comision_academica', 'comision'];
+    if (programa.usuario_id !== userId && !rolesPermitidos.includes(userRol)) {
+        return res.status(403).json({ 
+          success: false, 
+          message: 'No tienes permiso para editar este programa analítico.' 
+        });
     }
-
-    await programa.update({
-      nombre: nombre !== undefined ? nombre : programa.nombre,
-      datos_tabla: datosTablaActualizados
-    });
-
-    // Transformar datos_tabla a datos_programa para el frontend
-    const responseData = {
-      id: programa.id,
-      nombre: programa.nombre,
-      periodo: programa.datos_tabla?.periodo || '',
-      carrera: programa.datos_tabla?.carrera || '',
-      datos_programa: programa.datos_tabla || {},
-      created_at: programa.createdAt,
-      updated_at: programa.updatedAt
-    };
-
+    
+    await programa.update(req.body);
+    
     return res.status(200).json({
       success: true,
-      data: responseData,
-      message: 'Programa analítico actualizado exitosamente'
+      message: 'Programa analítico actualizado exitosamente',
+      data: programa
     });
-
   } catch (error) {
     console.error('Error al actualizar programa analítico:', error);
     return res.status(500).json({
       success: false,
-      message: 'Error al actualizar programa analítico',
+      message: 'Error interno al actualizar el programa analítico',
       error: error.message
     });
   }
 };
 
 module.exports = exports;
-
 
 
 

@@ -24,6 +24,7 @@
     "cheerio": "^1.1.0",
     "cors": "^2.8.5",
     "csv-parser": "^3.2.0",
+    "docx-tables": "^0.3.0",
     "dotenv": "^8.2.0",
     "express": "^4.17.1",
     "express-validator": "^7.2.1",

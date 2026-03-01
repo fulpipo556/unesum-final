@@ -5,58 +5,71 @@ const express = require('express');
 const router = express.Router();
 const comisionAcademicaController = require('../controllers/comisionAcademicaController');
 const { authenticate, authorize } = require('../middlewares/auth.middleware');
-const multer = require('multer');
-
-// Configurar multer
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB max
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel'
-    ];
-    if (allowedTypes.includes(file.mimetype) || 
-        file.originalname.match(/\.(xlsx|xls)$/i)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Formato no soportado. Use Excel (.xlsx, .xls).'));
-    }
-  }
-});
 
 /**
  * Rutas para Comisión Académica
  * Base path: /api/comision-academica
  */
 
-// 📊 PROCESAR SYLLABUS COMPLETO (Excel)
-router.post('/procesar-syllabus', 
+// 🏫 OBTENER ESTRUCTURA COMPLETA DE LA FACULTAD (carreras, mallas, asignaturas)
+router.get('/estructura-facultad', 
   authenticate, 
-  authorize(['administrador', 'comision_academica']),
-  upload.fields([{ name: 'archivo', maxCount: 1 }]), 
-  comisionAcademicaController.procesarSyllabusCompleto
+  authorize(['administrador', 'comision_academica', 'comision']),
+  comisionAcademicaController.obtenerEstructuraFacultad
 );
 
-// 📋 LISTAR TODOS LOS SYLLABUS
-router.get('/syllabus', 
+// 📚 OBTENER ASIGNATURAS DE UNA CARRERA ESPECÍFICA
+router.get('/carreras/:carrera_id/asignaturas', 
+  authenticate, 
+  authorize(['administrador', 'comision_academica', 'comision']),
+  comisionAcademicaController.obtenerAsignaturasCarrera
+);
+
+// =========================================================================
+// CRUD SYLLABUS COMISIÓN ACADÉMICA
+// =========================================================================
+
+// 📋 LISTAR todos los syllabus comisión (GET /api/comision-academica/syllabus)
+router.get('/syllabus',
   authenticate,
-  authorize(['administrador', 'comision_academica']),
+  authorize(['administrador', 'comision_academica', 'comision']),
   comisionAcademicaController.listarSyllabusComision
 );
 
-// 📄 OBTENER SYLLABUS ESPECÍFICO
-router.get('/syllabus/:sessionId', 
+// 📖 BUSCAR por asignatura+periodo (GET /api/comision-academica/syllabus/buscar?asignatura_id=X&periodo=Y)
+router.get('/syllabus/buscar',
   authenticate,
-  authorize(['administrador', 'comision_academica', 'profesor', 'docente']),
+  authorize(['administrador', 'comision_academica', 'comision']),
+  comisionAcademicaController.obtenerSyllabusPorAsignaturaPeriodo
+);
+
+// 📖 OBTENER por ID (GET /api/comision-academica/syllabus/:id)
+router.get('/syllabus/:id',
+  authenticate,
+  authorize(['administrador', 'comision_academica', 'comision']),
   comisionAcademicaController.obtenerSyllabusComision
 );
 
-// 🗑️ ELIMINAR SYLLABUS
-router.delete('/syllabus/:sessionId', 
+// 📝 CREAR nuevo (POST /api/comision-academica/syllabus)
+router.post('/syllabus',
   authenticate,
-  authorize(['administrador', 'comision_academica']),
+  authorize(['administrador', 'comision_academica', 'comision']),
+  comisionAcademicaController.crearSyllabusComision
+);
+
+// ✏️ ACTUALIZAR (PUT /api/comision-academica/syllabus/:id)
+router.put('/syllabus/:id',
+  authenticate,
+  authorize(['administrador', 'comision_academica', 'comision']),
+  comisionAcademicaController.actualizarSyllabusComision
+);
+
+// 🗑️ ELIMINAR (DELETE /api/comision-academica/syllabus/:id)
+router.delete('/syllabus/:id',
+  authenticate,
+  authorize(['administrador', 'comision_academica', 'comision']),
   comisionAcademicaController.eliminarSyllabusComision
 );
 
 module.exports = router;
+

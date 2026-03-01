@@ -33,19 +33,19 @@ const upload = multer({
  */
 
 // 📋 EXTRAER TÍTULOS de un archivo Syllabus (Excel o Word)
-// Solo administradores pueden extraer
+// Administradores y comisión académica pueden extraer
 router.post('/extraer-titulos', 
   authenticate, 
-  authorize(['administrador']),
+  authorize(['administrador', 'comision_academica']),
   upload.fields([{ name: 'archivo', maxCount: 1 }]), 
   syllabusExtractionController.extraerTitulosSyllabus
 );
 
 // 📝 OBTENER TODAS LAS SESIONES DE EXTRACCIÓN
-// Administradores y profesores pueden ver las sesiones
+// Administradores, profesores, docentes y comisión académica pueden ver las sesiones
 router.get('/sesiones', 
   authenticate,
-  authorize(['administrador', 'profesor', 'docente']),
+  authorize(['administrador', 'profesor', 'docente', 'comision', 'comision_academica']),
   syllabusExtractionController.listarSesionesSyllabus
 );
 
@@ -70,24 +70,24 @@ router.get('/sesion-extraccion/:sessionId/agrupaciones',
   syllabusExtractionController.obtenerAgrupacionesSyllabus
 );
 
-// Guardar agrupaciones (solo administradores)
+// Guardar agrupaciones (administradores y comisión académica)
 router.post('/sesion-extraccion/:sessionId/agrupaciones', 
   authenticate,
-  authorize(['administrador']),
+  authorize(['administrador', 'comision_academica']),
   syllabusExtractionController.guardarAgrupacionesSyllabus
 );
 
-// Eliminar agrupaciones (solo administradores)
+// Eliminar agrupaciones (administradores y comisión académica)
 router.delete('/sesion-extraccion/:sessionId/agrupaciones', 
   authenticate,
-  authorize(['administrador']),
+  authorize(['administrador', 'comision_academica']),
   syllabusExtractionController.eliminarAgrupacionesSyllabus
 );
 
-// 🗑️ ELIMINAR SESIÓN COMPLETA DE SYLLABUS (solo administradores)
+// 🗑️ ELIMINAR SESIÓN COMPLETA DE SYLLABUS (administradores y comisión académica)
 router.delete('/sesion/:sessionId', 
   authenticate,
-  authorize(['administrador']),
+  authorize(['administrador', 'comision_academica']),
   syllabusExtractionController.eliminarSesionSyllabus
 );
 

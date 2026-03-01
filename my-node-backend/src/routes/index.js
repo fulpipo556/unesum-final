@@ -16,13 +16,11 @@ const clasificaRoutes = require('./clasificacion.routes');
 const periodoRoutes = require('./periodo.routes');
 const mallaCurricularRoutes = require('./mallaCurricular.routes');
 const mallaRoutes = require('./malla.routes');
+const carreraRoutes = require('./carrera.routes');
+const facultadRoutes = require('./facultad.routes');
 const syllabusExtractionRoutes = require('./syllabusExtractionRoutes');
 const comisionAcademicaRoutes = require('./comisionAcademica.routes');
-const actividadesExtracurricularesRoutes = require('./actividadesExtracurriculares');
-const rolRoutes = require('./rol.routes');
-const usuariosRoutes = require('./usuarios.routes');
-const facultadRoutes = require('./facultad.routes');
-const carreraRoutes = require('./carrera.routes');
+const docenteEditorRoutes = require('./docenteEditor.routes');
 const router = express.Router();
 
 module.exports = (app) => {
@@ -49,11 +47,9 @@ module.exports = (app) => {
   router.use('/periodos', periodoRoutes);
   router.use('/malla-curricular', mallaCurricularRoutes);
   router.use('/mallas', mallaRoutes);
+  router.use('/carreras', carreraRoutes);
+  router.use('/facultades', facultadRoutes);
   router.use('/syllabus-extraction', syllabusExtractionRoutes);
   router.use('/comision-academica', comisionAcademicaRoutes);
-  router.use('/actividades-extracurriculares', actividadesExtracurricularesRoutes);
-  router.use('/roles', rolRoutes);
-  router.use('/usuarios', usuariosRoutes);
-  router.use('/facultades', facultadRoutes);
-  router.use('/carreras', carreraRoutes);
+  router.use('/docente-editor', docenteEditorRoutes);
 };

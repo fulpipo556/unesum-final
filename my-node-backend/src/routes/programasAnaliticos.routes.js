@@ -23,7 +23,7 @@ router.use(authenticate);
 // Rutas de carga de Excel (nuevas) con multer
 router.post(
   '/upload', 
-  authorize(['administrador', 'docente']), 
+  authorize(['administrador', 'comision_academica', 'docente']), 
   upload.fields([
     { name: 'excel', maxCount: 1 },
     { name: 'escudo', maxCount: 1 }
@@ -32,11 +32,11 @@ router.post(
 );
 
 // Rutas CRUD para Programas Analíticos
-// Solo los administradores pueden gestionar programas
-router.get('/', authorize(['administrador']), programasController.getAll);
-router.get('/:id', authorize(['administrador']), programasController.getById);
-router.post('/', authorize(['administrador']), programasController.create);
-router.put('/:id', authorize(['administrador']), programasController.update);
-router.delete('/:id', authorize(['administrador']), programasController.delete);
+// Administradores y comisión académica pueden gestionar programas
+router.get('/', authorize(['administrador', 'comision_academica']), programasController.getAll);
+router.get('/:id', authorize(['administrador', 'comision_academica']), programasController.getById);
+router.post('/', authorize(['administrador', 'comision_academica']), programasController.create);
+router.put('/:id', authorize(['administrador', 'comision_academica']), programasController.update);
+router.delete('/:id', authorize(['administrador', 'comision_academica']), programasController.delete);
 
 module.exports = router;

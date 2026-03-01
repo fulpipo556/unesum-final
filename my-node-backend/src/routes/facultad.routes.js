@@ -3,12 +3,19 @@ const router = express.Router();
 const facultadController = require('../controllers/facultad.controller');
 const { authenticate, authorize } = require('../middlewares/auth.middleware');
 
-// Rutas públicas (si necesitas que sean accesibles sin auth)
+// Todas las rutas requieren autenticación
+router.use(authenticate);
+
+// Obtener todas las facultades (todos los roles autenticados)
 router.get('/', facultadController.getAll);
 
-// Rutas protegidas
-router.post('/', authenticate, authorize(['administrador']), facultadController.create);
-router.put('/:id', authenticate, authorize(['administrador']), facultadController.update);
-router.delete('/:id', authenticate, authorize(['administrador']), facultadController.delete);
+// Crear facultad (solo administrador)
+router.post('/', authorize(['administrador']), facultadController.create);
+
+// Actualizar facultad (solo administrador)
+router.put('/:id', authorize(['administrador']), facultadController.update);
+
+// Eliminar facultad (solo administrador)
+router.delete('/:id', authorize(['administrador']), facultadController.delete);
 
 module.exports = router;

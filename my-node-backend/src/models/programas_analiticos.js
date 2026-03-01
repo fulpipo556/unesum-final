@@ -11,6 +11,10 @@ module.exports = function(sequelize, DataTypes) {
       type: DataTypes.STRING(255),
       allowNull: false
     },
+    periodo: {
+      type: DataTypes.STRING(50),
+      allowNull: true
+    },
     datos_tabla: {
       type: DataTypes.JSONB,
       allowNull: false
@@ -28,6 +32,14 @@ module.exports = function(sequelize, DataTypes) {
       allowNull: true,
       references: {
         model: 'plantillas_programa',
+        key: 'id'
+      }
+    },
+    asignatura_id: {
+      type: DataTypes.BIGINT,
+      allowNull: true,
+      references: {
+        model: 'asignaturas',
         key: 'id'
       }
     }

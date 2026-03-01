@@ -5,11 +5,14 @@ const mammoth = require('mammoth');
 const xlsx = require('xlsx');
 const fs = require('fs');
 const path = require('path');
+const cheerio = require('cheerio');
+// ✅ NUEVO: Validador basado en editor
+const { extraerCamposRequeridos, extraerTitulosWord, compararTitulos, validarSyllabusContraPlantilla } = require('../utils/syllabusValidatorEditor');
 
 // --- CREAR UN NUEVO SYLLABUS ---
 exports.create = async (req, res) => {
   try {
-    const { nombre, periodo, materias, datos_syllabus } = req.body;
+    const { nombre, periodo, materias, asignatura_id, datos_syllabus } = req.body;
     const usuario_id = req.user.id; 
 
     if (!nombre || !periodo || !datos_syllabus) {
@@ -18,11 +21,50 @@ exports.create = async (req, res) => {
         message: 'Los campos nombre, periodo y datos_syllabus son obligatorios'
       });
     }
+
+    // 🔒 VALIDACIÓN: Verificar si ya existe un syllabus para esta materia y periodo
+    // Validar por asignatura_id si está disponible, sino por nombre de materia
+    // SOLO validar duplicados si hay asignatura_id (creado desde gestión de asignaturas)
+    if (asignatura_id) {
+      const whereValidacion = {
+        periodo: periodo,
+        asignatura_id: asignatura_id
+        // paranoid:true filtra automáticamente los eliminados (deletedAt IS NULL)
+      };
+
+      const syllabusExistente = await Syllabus.findOne({
+        where: whereValidacion,
+        include: [{
+          model: db.Asignatura,
+          as: 'asignatura',
+          attributes: ['id', 'nombre', 'codigo']
+        }]
+      });
+
+      if (syllabusExistente) {
+        const nombreMateria = syllabusExistente.asignatura 
+          ? syllabusExistente.asignatura.nombre 
+          : (syllabusExistente.materias || nombre);
+        
+        return res.status(409).json({ // 409 = Conflict
+          success: false,
+          message: `Ya existe un syllabus para la materia "${nombreMateria}" en el periodo "${periodo}". Solo puede subir un syllabus por materia por periodo. Puede eliminarlo para subir uno nuevo.`,
+          existente: {
+            id: syllabusExistente.id,
+            nombre: syllabusExistente.nombre,
+            materia: nombreMateria,
+            asignatura_id: syllabusExistente.asignatura_id,
+            fecha_creacion: syllabusExistente.created_at
+          }
+        });
+      }
+    }
     
     const nuevoSyllabus = await Syllabus.create({
       nombre,
       periodo,
       materias: materias || nombre,
+      asignatura_id: asignatura_id || null, // 🆕 Guardar asignatura_id para validación futura
       datos_syllabus,
       usuario_id
     });
@@ -42,20 +84,47 @@ exports.create = async (req, res) => {
   }
 };
 
-// --- OBTENER TODOS LOS SYLLABI (SOLO ADMIN) ---
+// --- OBTENER TODOS LOS SYLLABI ---
+// Admin y comisión académica ven TODOS
 exports.getAll = async (req, res) => {
   try {
+    const usuario_id = req.user.id;
+    const usuario_rol = req.user.rol;
+
+    // 🔍 Construcción dinámica del WHERE
+    const whereCondition = {};
+    
+    // Administrador y comisión académica ven TODOS los syllabi (whereCondition vacío)
+    // Solo profesores/docentes ven los suyos (manejado por /mine)
+    // No se filtra por usuario_id aquí
+
+    console.log(`📋 [getAll] Usuario: ${usuario_id}, Rol: ${usuario_rol}, WHERE:`, whereCondition);
+
     const syllabi = await Syllabus.findAll({
+      where: whereCondition,
       order: [['updatedAt', 'DESC']],
       include: {
         model: Usuario,
         as: 'creador',
-        attributes: ['id', 'nombres', 'apellidos']
+        attributes: ['id', 'nombres', 'apellidos', 'rol']
       }
     });
+
+    console.log(`✅ [getAll] Encontrados ${syllabi.length} syllabi`);
+    
+    // 🔍 DEBUG: Ver qué tipo de datos vienen en datos_syllabus
+    if (syllabi.length > 0) {
+      console.log('🔍 Primer syllabus - datos_syllabus tipo:', typeof syllabi[0].datos_syllabus);
+      console.log('🔍 Primer syllabus - datos_syllabus preview:', 
+        typeof syllabi[0].datos_syllabus === 'string' 
+          ? syllabi[0].datos_syllabus.substring(0, 100) + '...'
+          : JSON.stringify(syllabi[0].datos_syllabus).substring(0, 100) + '...'
+      );
+    }
+
     return res.status(200).json({ success: true, data: syllabi });
   } catch (error) {
-    console.error('Error al obtener syllabi:', error);
+    console.error('❌ Error al obtener syllabi:', error);
     return res.status(500).json({
       success: false,
       message: 'Error interno al obtener los syllabi',
@@ -145,6 +214,139 @@ exports.getMine = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Error interno al obtener los syllabi del profesor',
+      error: error.message
+    });
+  }
+};
+
+// --- VERIFICAR SI YA EXISTE SYLLABUS PARA MATERIA/PERIODO ---
+exports.verificarExistencia = async (req, res) => {
+  try {
+    const { periodo, materia, asignatura_id } = req.query;
+    const usuario_id = req.user.id;
+
+    console.log('🔍 Verificando existencia:', { usuario_id, periodo, materia, asignatura_id });
+
+    if (!periodo) {
+      return res.status(400).json({
+        success: false,
+        message: 'Se requiere el periodo'
+      });
+    }
+
+    if (!asignatura_id && !materia) {
+      return res.status(400).json({
+        success: false,
+        message: 'Se requiere asignatura_id o materia'
+      });
+    }
+
+    // Construir condición WHERE - paranoid:true ya filtra los eliminados automáticamente
+    const whereCondicion = {
+      periodo: periodo
+    };
+
+    if (asignatura_id) {
+      whereCondicion.asignatura_id = asignatura_id;
+    } else {
+      whereCondicion.materias = materia;
+    }
+
+    let syllabusExistente = await Syllabus.findOne({
+      where: whereCondicion,
+      attributes: ['id', 'nombre', 'materias', 'asignatura_id', 'createdAt', 'updatedAt']
+    });
+
+    // Si no se encontró con asignatura_id, intentar buscar por nombre de materia
+    // (el admin puede haber subido sin asignatura_id vinculado)
+    if (!syllabusExistente && asignatura_id && materia) {
+      console.log('🔄 No encontrado por asignatura_id, buscando por nombre de materia:', materia);
+      const { Op } = require('sequelize');
+      syllabusExistente = await Syllabus.findOne({
+        where: {
+          periodo: periodo,
+          materias: { [Op.iLike]: `%${materia}%` }
+        },
+        attributes: ['id', 'nombre', 'materias', 'asignatura_id', 'createdAt', 'updatedAt']
+      });
+    }
+    
+    // Último intento: buscar solo por nombre de la materia si se proporcionó asignatura_id
+    // y podemos resolverlo a un nombre
+    if (!syllabusExistente && asignatura_id && !materia) {
+      try {
+        const asigRecord = await db.Asignatura.findByPk(asignatura_id, { attributes: ['nombre'] });
+        if (asigRecord && asigRecord.nombre) {
+          console.log('🔄 Buscando por nombre de asignatura resuelto:', asigRecord.nombre);
+          const { Op } = require('sequelize');
+          syllabusExistente = await Syllabus.findOne({
+            where: {
+              periodo: periodo,
+              materias: { [Op.iLike]: `%${asigRecord.nombre}%` }
+            },
+            attributes: ['id', 'nombre', 'materias', 'asignatura_id', 'createdAt', 'updatedAt']
+          });
+        }
+      } catch(e) { console.log('⚠️ Error resolviendo nombre de asignatura:', e.message); }
+    }
+
+    // Último fallback: buscar CUALQUIER syllabus del periodo (admin subió sin materia ni asignatura_id)
+    if (!syllabusExistente) {
+      console.log('🔄 Último fallback: buscando cualquier syllabus del periodo:', periodo);
+      syllabusExistente = await Syllabus.findOne({
+        where: { periodo: periodo },
+        attributes: ['id', 'nombre', 'materias', 'asignatura_id', 'createdAt', 'updatedAt'],
+        order: [['createdAt', 'DESC']]
+      });
+      if (syllabusExistente) {
+        console.log('✅ Encontrado syllabus genérico del periodo:', syllabusExistente.id);
+      }
+    }
+
+    if (syllabusExistente) {
+      // Obtener nombre de asignatura si existe asignatura_id
+      let nombreMateria = syllabusExistente.materias || materia;
+      
+      if (syllabusExistente.asignatura_id) {
+        try {
+          const asignatura = await db.Asignatura.findByPk(syllabusExistente.asignatura_id, {
+            attributes: ['id', 'nombre', 'codigo']
+          });
+          if (asignatura) {
+            nombreMateria = asignatura.nombre;
+          }
+        } catch (err) {
+          console.log('⚠️ No se pudo obtener asignatura:', err.message);
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        existe: true,
+        message: `Ya existe un syllabus para "${nombreMateria}" en el periodo "${periodo}"`,
+        syllabus: {
+          id: syllabusExistente.id,
+          nombre: syllabusExistente.nombre,
+          materia: nombreMateria,
+          asignatura_id: syllabusExistente.asignatura_id,
+          asignatura: syllabusExistente.asignatura,
+          fecha_creacion: syllabusExistente.createdAt,
+          fecha_actualizacion: syllabusExistente.updatedAt
+        }
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      existe: false,
+      message: 'No existe syllabus para esta materia/periodo, puede subir uno nuevo'
+    });
+
+  } catch (error) {
+    console.error('❌ Error al verificar existencia:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al verificar existencia de syllabus',
       error: error.message
     });
   }
@@ -1047,6 +1249,447 @@ exports.uploadExcel = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Error al procesar el archivo Excel',
+      error: error.message
+    });
+  }
+};
+
+// ============================================
+// NUEVAS FUNCIONES PARA VALIDACIÓN DE TÍTULOS
+// ============================================
+
+/**
+ * Marcar un syllabus como plantilla de referencia del admin
+ * Solo el admin puede hacer esto
+ */
+exports.marcarComoPlantilla = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { periodo } = req.body;
+    
+    // Verificar que el usuario sea admin
+    if (req.user.rol !== 'administrador') {
+      return res.status(403).json({
+        success: false,
+        message: 'Solo los administradores pueden marcar plantillas de referencia'
+      });
+    }
+    
+    // Buscar el syllabus
+    const syllabus = await Syllabus.findByPk(id);
+    if (!syllabus) {
+      return res.status(404).json({
+        success: false,
+        message: 'Syllabus no encontrado'
+      });
+    }
+    
+    // Desmarcar cualquier otra plantilla del mismo periodo
+    await Syllabus.update(
+      { es_plantilla_referencia: false },
+      { where: { periodo: periodo || syllabus.periodo, es_plantilla_referencia: true } }
+    );
+    
+    // Marcar este como plantilla
+    syllabus.es_plantilla_referencia = true;
+    
+    // Si no tiene títulos extraídos, intentar extraerlos ahora
+    if (!syllabus.titulos_extraidos || syllabus.titulos_extraidos.length === 0) {
+      console.log('⚠️ La plantilla no tiene títulos extraídos. Debe subir un archivo Word para extraer títulos.');
+    }
+    
+    await syllabus.save();
+    
+    console.log(`✅ Syllabus ${id} marcado como plantilla de referencia para periodo: ${syllabus.periodo}`);
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Syllabus marcado como plantilla de referencia exitosamente',
+      data: {
+        id: syllabus.id,
+        nombre: syllabus.nombre,
+        periodo: syllabus.periodo,
+        es_plantilla_referencia: syllabus.es_plantilla_referencia,
+        titulos_extraidos: syllabus.titulos_extraidos || []
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error al marcar syllabus como plantilla:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al marcar syllabus como plantilla',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Subir syllabus del admin con extracción de títulos para plantilla
+ * Este será el syllabus de referencia que los profesores deben seguir
+ */
+exports.subirPlantillaAdmin = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No se ha proporcionado ningún archivo'
+      });
+    }
+    
+    const filePath = req.file.path;
+    const { nombre, periodo, materias } = req.body;
+    const usuario_id = req.user.id;
+    
+    if (!nombre || !periodo) {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      return res.status(400).json({
+        success: false,
+        message: 'Los campos nombre y periodo son obligatorios'
+      });
+    }
+    
+    console.log(`📤 Admin subiendo plantilla de referencia para periodo: ${periodo}`);
+    
+    // Extraer títulos en negrita del documento
+    const titulos = await extraerTitulosNegrita(filePath);
+    
+    console.log(`📋 Títulos extraídos de la plantilla: ${titulos.length}`);
+    console.log('Títulos:', titulos);
+    
+    if (titulos.length === 0) {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      return res.status(400).json({
+        success: false,
+        message: 'No se pudieron extraer títulos del documento. Asegúrese de que los títulos importantes estén en negrita.'
+      });
+    }
+    
+    // Desmarcar cualquier plantilla anterior del mismo periodo
+    await Syllabus.update(
+      { es_plantilla_referencia: false },
+      { where: { periodo, es_plantilla_referencia: true } }
+    );
+    
+    // Crear el syllabus plantilla
+    const plantilla = await Syllabus.create({
+      nombre,
+      periodo,
+      materias: materias || nombre,
+      datos_syllabus: { tipo: 'plantilla_referencia', titulos },
+      usuario_id,
+      es_plantilla_referencia: true,
+      titulos_extraidos: titulos
+    });
+    
+    // Eliminar archivo temporal
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    
+    console.log(`✅ Plantilla de referencia creada: ID ${plantilla.id}, Periodo: ${periodo}, Títulos: ${titulos.length}`);
+    
+    return res.status(201).json({
+      success: true,
+      message: 'Plantilla de referencia creada exitosamente',
+      data: {
+        id: plantilla.id,
+        nombre: plantilla.nombre,
+        periodo: plantilla.periodo,
+        es_plantilla_referencia: true,
+        total_titulos: titulos.length,
+        titulos_requeridos: titulos
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error al subir plantilla del admin:', error);
+    
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    
+    return res.status(500).json({
+      success: false,
+      message: 'Error al procesar la plantilla',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Validar y subir syllabus de profesor/comisión
+ * Compara contra la plantilla de referencia del admin antes de guardar
+ */
+exports.subirSyllabusConValidacion = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No se ha proporcionado ningún archivo' });
+    }
+
+    const filePath = req.file.path;
+    const { nombre, periodo, materias } = req.body;
+    const usuario_id = req.user.id;
+
+    if (!nombre || !periodo) {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      return res.status(400).json({ success: false, message: 'Los campos nombre y periodo son obligatorios' });
+    }
+
+    console.log(`📤 Usuario ${req.user.nombres} subiendo syllabus para periodo: ${periodo}`);
+
+    // 1. Buscar la plantilla de referencia del admin para este periodo
+    const plantilla = await Syllabus.findOne({ where: { periodo, es_plantilla_referencia: true } });
+
+    if (!plantilla) {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      return res.status(400).json({ success: false, message: `No existe una plantilla de referencia para el periodo ${periodo}. Contacte al administrador.` });
+    }
+
+    if (!plantilla.datos_syllabus || Object.keys(plantilla.datos_syllabus).length === 0) {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      return res.status(400).json({ success: false, message: 'La plantilla de referencia no contiene la configuración del editor (datos_syllabus). Contacte al administrador.' });
+    }
+
+    console.log(`📋 Plantilla encontrada: ${plantilla.nombre} (ID: ${plantilla.id}) - validando contra configuración del editor`);
+
+    // 2. Validar usando la configuración del editor (datos_syllabus)
+    const resultado = await validarSyllabusContraPlantilla(plantilla.datos_syllabus, filePath);
+
+    // Resultado esperado: { esValido, faltantes, extras, porcentaje, encontrados, total }
+    if (!resultado || typeof resultado !== 'object') {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      return res.status(500).json({ success: false, message: 'Error al validar el documento contra la plantilla' });
+    }
+
+    console.log(`📊 Resultado validación: ${resultado.porcentaje}% coincidencia - Válido: ${resultado.esValido}`);
+
+    if (!resultado.esValido) {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      return res.status(400).json({
+        success: false,
+        message: 'El syllabus no cumple con la estructura requerida según la plantilla del administrador',
+        detalles: {
+          porcentaje_coincidencia: resultado.porcentaje,
+          total_requeridos: resultado.total,
+          encontrados: resultado.encontrados,
+          faltantes: resultado.faltantes,
+          extras: resultado.extras
+        }
+      });
+    }
+
+    // 3. Si pasó la validación, extraer títulos del documento para almacenarlos (separado)
+    const titulosProfesor = await extraerTitulosWord(filePath).catch(err => {
+      console.warn('⚠️ No se pudieron extraer títulos del Word para almacenamiento:', err.message);
+      return [];
+    });
+
+    // 4. Guardar el syllabus validado
+    const nuevoSyllabus = await Syllabus.create({
+      nombre,
+      periodo,
+      materias: materias || nombre,
+      datos_syllabus: {
+        tipo: 'syllabus_validado',
+        titulos: titulosProfesor,
+        validacion: resultado
+      },
+      usuario_id,
+      es_plantilla_referencia: false,
+      titulos_extraidos: titulosProfesor
+    });
+
+    // Eliminar archivo temporal
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+    console.log(`✅ Syllabus validado y guardado: ID ${nuevoSyllabus.id}`);
+
+    return res.status(201).json({
+      success: true,
+      message: '✅ Syllabus validado y guardado exitosamente',
+      data: {
+        id: nuevoSyllabus.id,
+        nombre: nuevoSyllabus.nombre,
+        periodo: nuevoSyllabus.periodo,
+        validacion: {
+          porcentaje_coincidencia: resultado.porcentaje,
+          total_requeridos: resultado.total,
+          encontrados: resultado.encontrados
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error al validar syllabus:', error);
+
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    return res.status(500).json({ success: false, message: 'Error al procesar el syllabus', error: error.message });
+  }
+};
+
+/**
+ * Obtener la plantilla de referencia para un periodo específico
+ */
+exports.obtenerPlantillaPeriodo = async (req, res) => {
+  try {
+    const { periodo } = req.params;
+    
+    const plantilla = await Syllabus.findOne({
+      where: {
+        periodo,
+        es_plantilla_referencia: true
+      },
+      include: {
+        model: Usuario,
+        as: 'creador',
+        attributes: ['id', 'nombres', 'apellidos']
+      }
+    });
+    
+    if (!plantilla) {
+      return res.status(404).json({
+        success: false,
+        message: `No existe plantilla de referencia para el periodo ${periodo}`
+      });
+    }
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: plantilla.id,
+        nombre: plantilla.nombre,
+        periodo: plantilla.periodo,
+        titulos_requeridos: plantilla.titulos_extraidos || [],
+        total_titulos: (plantilla.titulos_extraidos || []).length,
+        creador: plantilla.creador
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error al obtener plantilla:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al obtener plantilla de referencia',
+      error: error.message
+    });
+  }
+};
+
+// ============================================================
+// EXTRAER TABLAS CRUDAS DEL WORD (mammoth + cheerio)
+// POST /api/syllabi/extract-word-tables
+// Devuelve: { rawTables: string[][][], flatHeaders: string[][], wordData: Record<string,string>, stats }
+// ============================================================
+exports.extractWordTables = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No se recibió archivo .docx' });
+    }
+
+    const buffer = fs.readFileSync(req.file.path);
+
+    // 1) Convertir a HTML con mammoth
+    const htmlResult = await mammoth.convertToHtml({ buffer });
+    const html = htmlResult.value;
+
+    // 2) Parsear tablas con cheerio
+    // 2) Parsear tablas con cheerio (SOPORTE PARA ROWSPAN Y COLSPAN)
+    const $ = cheerio.load(html);
+    const rawTables = [];
+    const flatHeaders = [];
+
+    $('table').each((tIdx, table) => {
+      const grid = [];
+      
+      $(table).find('tr').each((rIdx, tr) => {
+        if (!grid[rIdx]) grid[rIdx] = [];
+        let cIdx = 0;
+        
+        $(tr).find('td, th').each((_, td) => {
+          // Buscar la siguiente columna disponible en esta fila
+          while (grid[rIdx][cIdx] !== undefined) {
+            cIdx++;
+          }
+          
+          const $td = $(td);
+          const text = ($td.text() || '').replace(/\s+/g, ' ').trim();
+          const rowSpan = parseInt($td.attr('rowspan') || '1', 10) || 1;
+          const colSpan = parseInt($td.attr('colspan') || '1', 10) || 1;
+          
+          // Llenar la matriz virtual
+          for (let r = 0; r < rowSpan; r++) {
+            for (let c = 0; c < colSpan; c++) {
+              if (!grid[rIdx + r]) grid[rIdx + r] = [];
+              grid[rIdx + r][cIdx + c] = (r === 0 && c === 0) ? text : "";
+            }
+          }
+        });
+      });
+
+      // Limpiar y guardar la tabla
+      const tableRows = grid.filter(row => row && row.length > 0);
+      if (tableRows.length > 0) {
+        rawTables.push(tableRows);
+        // Los headers son la primera fila de la tabla
+        flatHeaders.push(tableRows[0] || []);
+      }
+    });
+
+    // 3) Construir wordData (pares clave → valor) de todas las filas
+    const wordData = {};
+
+    const normalizar = (s) => (s || '')
+      .toUpperCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ').trim();
+
+    rawTables.forEach((table) => {
+      table.forEach((row) => {
+        // Fila de 2 celdas: clave | valor
+        if (row.length === 2 && row[0].length >= 2 && row[0].length < 100 && row[1].length > 0) {
+          const clave = normalizar(row[0]);
+          if (!wordData[clave]) wordData[clave] = row[1];
+        }
+        // Fila de 4 celdas: clave1 | val1 | clave2 | val2
+        if (row.length === 4) {
+          const c0 = normalizar(row[0]);
+          const c2 = normalizar(row[2]);
+          if (c0.length >= 2 && c0.length < 100 && row[1].length > 0 && !wordData[c0]) wordData[c0] = row[1];
+          if (c2.length >= 2 && c2.length < 100 && row[3].length > 0 && !wordData[c2]) wordData[c2] = row[3];
+        }
+        // Fila de 3 celdas
+        if (row.length === 3) {
+          const c0 = normalizar(row[0]);
+          const c1 = normalizar(row[1]);
+          if (c0.length >= 2 && c0.length < 100 && !wordData[c0]) wordData[c0] = [row[1], row[2]].filter(Boolean).join(' | ');
+          if (c1.length >= 2 && c1.length < 60 && row[2].length > 0 && !wordData[c1]) wordData[c1] = row[2];
+        }
+      });
+    });
+
+    // Limpiar archivo temporal
+    try { fs.unlinkSync(req.file.path); } catch (_) {}
+
+    console.log(`✅ [extractWordTables] ${rawTables.length} tablas, ${Object.keys(wordData).length} claves`);
+
+    return res.status(200).json({
+      success: true,
+      rawTables,
+      flatHeaders,
+      wordData,
+      stats: {
+        tablas: rawTables.length,
+        claves: Object.keys(wordData).length,
+        metodo: 'mammoth+cheerio'
+      }
+    });
+  } catch (error) {
+    console.error('❌ [extractWordTables] Error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al extraer tablas del Word',
       error: error.message
     });
   }
