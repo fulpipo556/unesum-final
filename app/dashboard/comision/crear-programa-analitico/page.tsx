@@ -61,6 +61,8 @@ export default function EditorProgramaAnaliticoPage() {
   const [editContent, setEditContent] = useState("")
   const [modalCell, setModalCell] = useState<{id: string, content: string, isEditable: boolean} | null>(null)
   const asignaturaIdParam = searchParams.get("asignatura")
+  const periodoParam = searchParams.get("periodo")
+  const programaIdParam = searchParams.get("id")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const fileInputRefSync = useRef<HTMLInputElement>(null)
 
@@ -104,6 +106,13 @@ export default function EditorProgramaAnaliticoPage() {
         
         setSavedprogramas(programasArray);
         setPeriodos(periodosArray);
+        // Pre-seleccionar periodo desde URL o el actual
+        if (periodoParam) {
+          setSelectedPeriod(periodoParam);
+        } else if (!selectedPeriod && periodosArray.length > 0) {
+          const actual = periodosArray.find((p: any) => p.estado === 'actual');
+          if (actual) setSelectedPeriod(actual.id.toString());
+        }
         
         console.log('✅ Datos cargados:', {
           programas: programasArray.length,
@@ -128,21 +137,113 @@ export default function EditorProgramaAnaliticoPage() {
     }
   }, [activeProgramaAnalitico, activeTabId]);
 
+  // Helper: compara periodo flexible (por ID o nombre)
+  const matchPeriodo = (sPeriodo: string, selPeriodo: string) => {
+    if (!sPeriodo || !selPeriodo) return !sPeriodo; // null periodo matches if nothing selected
+    if (sPeriodo === selPeriodo) return true;
+    const periodoObj = periodos.find((p: any) => p.id.toString() === selPeriodo);
+    const periodoNombre = periodoObj?.nombre || '';
+    return sPeriodo === periodoNombre || periodoNombre === sPeriodo;
+  };
+
   // Cargar automáticamente el programa cuando se selecciona un periodo
   useEffect(() => {
-    if (selectedPeriod && savedprogramas.length > 0) {
-      const programasDelPeriodo = savedprogramas.filter(s => s.periodo === selectedPeriod);
-      
+    // Si venimos de "Ver Programa" con id, no auto-cargar de savedprogramas
+    if (programaIdParam) return;
+    if (!selectedPeriod) return;
+    
+    // 1. Buscar programas que coincidan por periodo + asignatura
+    let programasDelPeriodo = savedprogramas.filter((s: any) => {
+      if (!matchPeriodo(s.periodo, selectedPeriod)) return false;
+      if (asignaturaIdParam) {
+        return String(s.asignatura_id) === String(asignaturaIdParam);
+      }
+      return true;
+    });
+    
+    // 2. Si no encontramos con asignatura específica, buscar sin asignatura (null) para ese periodo
+    if (programasDelPeriodo.length === 0 && asignaturaIdParam) {
+      programasDelPeriodo = savedprogramas.filter((s: any) => {
+        return matchPeriodo(s.periodo, selectedPeriod) && (!s.asignatura_id || s.asignatura_id === null);
+      });
       if (programasDelPeriodo.length > 0) {
-        // Si hay un programa del periodo, cargarlo automáticamente
-        const primerPrograma = programasDelPeriodo[0];
-        console.log(`📋 Cargando automáticamente programa del periodo "${selectedPeriod}":`, primerPrograma.nombre);
-        handleLoadProgramaAnalitico(String(primerPrograma.id));
-      } else {
-        console.log(`⚠️ No hay programas guardados para el periodo "${selectedPeriod}"`);
+        console.log(`📋 Encontrado programa sin asignatura asignada para el periodo`);
       }
     }
-  }, [selectedPeriod]);
+    
+    // 3. Si aún no hay, buscar cualquier programa del periodo
+    if (programasDelPeriodo.length === 0) {
+      programasDelPeriodo = savedprogramas.filter((s: any) => matchPeriodo(s.periodo, selectedPeriod));
+    }
+    
+    if (programasDelPeriodo.length > 0) {
+      const primerPrograma = programasDelPeriodo[0];
+      console.log(`📋 Cargando automáticamente programa del periodo "${selectedPeriod}":`, primerPrograma.nombre);
+      handleLoadProgramaAnalitico(String(primerPrograma.id));
+    } else {
+      console.log(`⚠️ No hay programas guardados para el periodo "${selectedPeriod}"`);
+      // Limpiar editor si no hay programa para este periodo
+      setprogramas([]);
+      setActiveProgramaAnaliticoId(null);
+      setActiveTabId(null);
+    }
+  }, [selectedPeriod, savedprogramas.length, periodos.length]);
+
+  // 🔄 Cargar programa específico cuando se viene de "Ver Programa" con ?id=X
+  useEffect(() => {
+    if (!programaIdParam) return;
+    const cargarProgramaDirecto = async () => {
+      try {
+        const res = await apiRequest(`/api/programa-analitico/${programaIdParam}`);
+        const programaData = res?.data;
+        if (!programaData) return;
+        console.log('✅ Programa cargado directo por ID:', programaData.id);
+        
+        let editorData = programaData.datos_tabla;
+        if (typeof editorData === 'string') {
+          try { editorData = JSON.parse(editorData); } catch(e) {}
+        }
+        if (!editorData) return;
+        
+        editorData.id = programaData.id;
+        if (!editorData.name) editorData.name = programaData.nombre;
+        
+        // Normalizar estructura de tabs para el editor
+        if (editorData.tabs) {
+          editorData.tabs = editorData.tabs.map((t: any) => ({
+            ...t,
+            rows: (t.rows || []).map((r: any) => ({
+              ...r,
+              cells: (r.cells || []).map((c: any) => ({
+                ...c,
+                backgroundColor: c.styles?.backgroundColor || c.backgroundColor,
+                textColor: c.styles?.textColor || c.textColor,
+                textAlign: c.styles?.textAlign || c.textAlign,
+                textOrientation: c.styles?.textOrientation || c.textOrientation,
+                isEditable: true
+              }))
+            }))
+          }));
+        } else if ((editorData as any).rows) {
+          editorData.tabs = [{ id: `tab-${Date.now()}`, title: 'General', rows: (editorData as any).rows }];
+        }
+        
+        setprogramas([editorData]);
+        setActiveProgramaAnaliticoId(editorData.id);
+        setActiveTabId(editorData.tabs?.[0]?.id || null);
+        if (programaData.periodo) setSelectedPeriod(programaData.periodo);
+        
+        // También agregar a savedprogramas para que guardar lo detecte
+        setSavedprogramas(prev => {
+          const exists = prev.find((s: any) => s.id === programaData.id);
+          return exists ? prev : [programaData, ...prev];
+        });
+      } catch (err) {
+        console.error('Error cargando programa directo:', err);
+      }
+    };
+    cargarProgramaDirecto();
+  }, [programaIdParam]);
 
   // --- API ---
   const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
@@ -921,12 +1022,14 @@ function buscarEnWordData(wordData: Record<string, any>, etiqueta: string): any 
         }))
       };
 
-      const payload = {
+      const payload: any = {
         nombre: activeProgramaAnalitico.name || 'ProgramaAnalitico',
         periodo: selectedPeriod,
         materias: activeProgramaAnalitico.name || 'ProgramaAnalitico',
         datos_tabla: datosParaGuardar
       }
+      // Incluir asignatura_id si viene de la URL
+      if (asignaturaIdParam) payload.asignatura_id = parseInt(asignaturaIdParam, 10);
       
       const isUpdate = typeof activeProgramaAnalitico.id === "number"
       const endpoint = isUpdate ? `/api/programa-analitico/${activeProgramaAnalitico.id}` : "/api/programa-analitico"
@@ -1001,9 +1104,18 @@ function buscarEnWordData(wordData: Record<string, any>, etiqueta: string): any 
     
     if (ProgramaAnaliticoToLoad) {
       console.log("✅ Cargando ProgramaAnalitico:", ProgramaAnaliticoToLoad.nombre);
-      console.log("📊 Estructura datos_tabla:", JSON.stringify(ProgramaAnaliticoToLoad.datos_tabla, null, 2));
       
-      let editorData = ProgramaAnaliticoToLoad.datos_tabla;
+      let rawData = (ProgramaAnaliticoToLoad as any).datos_tabla || (ProgramaAnaliticoToLoad as any).datos_programa;
+      if (typeof rawData === 'string') {
+        try { rawData = JSON.parse(rawData); } catch(e) { console.error("Error parsing datos_tabla:", e); }
+      }
+      if (!rawData || typeof rawData !== 'object') {
+        console.error("❌ datos_tabla está vacío o no es un objeto");
+        alert("El programa seleccionado no tiene datos válidos.");
+        return;
+      }
+      
+      let editorData = rawData;
       
       // 🔧 FIX CRÍTICO: Convertir formato de validación a formato de editor
       if ((editorData as any).tipo === 'ProgramaAnalitico_validado' && (editorData as any).titulos && !editorData.tabs) {
@@ -1055,10 +1167,30 @@ function buscarEnWordData(wordData: Record<string, any>, etiqueta: string): any 
       
       // ✅ VALIDACIÓN Y NORMALIZACIÓN DE LA ESTRUCTURA
       if (!editorData.tabs || editorData.tabs.length === 0) {
-        console.log("⚠️ No hay tabs, creando estructura desde rows...");
+        console.log("⚠️ No hay tabs, creando estructura desde datos...");
         
+        // Si tiene secciones (formato antiguo de Excel upload)
+        if ((editorData as any).secciones && Array.isArray((editorData as any).secciones)) {
+          console.log("🔄 Convirtiendo formato secciones a tabs...", (editorData as any).secciones.length, "secciones");
+          editorData.tabs = (editorData as any).secciones.map((sec: any, idx: number) => ({
+            id: `tab-sec-${idx}-${Date.now()}`,
+            title: sec.titulo || sec.nombre || `Sección ${idx + 1}`,
+            rows: Array.isArray(sec.datos) ? sec.datos.map((fila: any, rIdx: number) => ({
+              id: `row-${idx}-${rIdx}-${Date.now()}`,
+              cells: (Array.isArray(fila) ? fila : [fila]).map((celda: any, cIdx: number) => ({
+                id: `cell-${idx}-${rIdx}-${cIdx}-${Date.now()}`,
+                content: typeof celda === 'string' ? celda : (celda?.contenido || celda?.content || JSON.stringify(celda) || ''),
+                isHeader: rIdx === 0,
+                rowSpan: 1,
+                colSpan: 1,
+                isEditable: true,
+                textOrientation: 'horizontal' as const
+              }))
+            })) : []
+          }));
+        }
         // Si tiene rows directamente (formato antiguo)
-        if ((editorData as any).rows && Array.isArray((editorData as any).rows)) {
+        else if ((editorData as any).rows && Array.isArray((editorData as any).rows)) {
           console.log("📋 Encontradas", (editorData as any).rows.length, "filas directas");
           editorData.tabs = [{ 
             id: `tab-${Date.now()}`, 
@@ -1904,13 +2036,15 @@ function buscarEnWordData(wordData: Record<string, any>, etiqueta: string): any 
   };
 
   const programasFiltered = selectedPeriod 
-    ? savedprogramas.filter(s => s.periodo === selectedPeriod)
+    ? savedprogramas.filter(s => matchPeriodo(s.periodo, selectedPeriod) || !s.periodo)
     : savedprogramas;
   // --- LÓGICA DE INTELIGENCIA Y ESCALABILIDAD ---
 
   // 1. Limpia el nombre del periodo (Ej: "Primer Periodo PII 2026" -> "PII 2026")
-  const formatPeriodoSimple = (nombre: string) => {
-    if (!nombre) return "";
+  const formatPeriodoSimple = (periodoIdOrName: string) => {
+    if (!periodoIdOrName) return "";
+    const periodoObj = periodos.find((p: any) => p.id?.toString() === periodoIdOrName);
+    const nombre = periodoObj?.nombre || periodoIdOrName;
     const match = nombre.match(/(P[IVX]+\s\d{4})/i);
     return match ? match[0].toUpperCase() : nombre;
   };

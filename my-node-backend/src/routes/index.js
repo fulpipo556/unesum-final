@@ -20,6 +20,7 @@ const carreraRoutes = require('./carrera.routes');
 const facultadRoutes = require('./facultad.routes');
 const syllabusExtractionRoutes = require('./syllabusExtractionRoutes');
 const comisionAcademicaRoutes = require('./comisionAcademica.routes');
+const docenteEditorRoutes = require('./docenteEditor.routes');
 const router = express.Router();
 
 module.exports = (app) => {
@@ -50,4 +51,5 @@ module.exports = (app) => {
   router.use('/facultades', facultadRoutes);
   router.use('/syllabus-extraction', syllabusExtractionRoutes);
   router.use('/comision-academica', comisionAcademicaRoutes);
+  router.use('/docente-editor', docenteEditorRoutes);
 };

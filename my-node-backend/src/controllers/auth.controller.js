@@ -6,57 +6,109 @@ const Administrador = db.Usuario; // Modelo para administradores
 const Profesor = db.Profesor; 
 exports.login = async (req, res) => {
   try {
-    const { correo_electronico, contraseña } = req.body;
+    const { correo_electronico, contraseña, rol_seleccionado } = req.body;
     if (!correo_electronico || !contraseña) {
       return res.status(400).json({ success: false, message: 'Email y contraseña son requeridos.' });
     }
 
-    let user = null;
-    let rol = null;
+    // Buscar en AMBAS tablas para detectar roles múltiples
+    const availableRoles = [];
+    let adminUser = null;
+    let profesorUser = null;
 
-    // 1. Intentar encontrar al usuario como Administrador/Usuario
-    // Asumiendo que tu modelo se llama 'usuarios' en la BD
-    const admin = await db.Usuario.findOne({ where: { correo_electronico: correo_electronico } }); // O db.Administrador
-
+    // 1. Buscar en tabla usuarios
+    const admin = await db.Usuario.findOne({ where: { correo_electronico: correo_electronico } });
     if (admin) {
-      // --- ¡CAMBIO CRÍTICO AQUÍ! ---
-      // Accede a la propiedad 'contraseña' que coincide con la columna de la base de datos.
       const isPasswordCorrect = await bcrypt.compare(contraseña, admin.contraseña);
       if (isPasswordCorrect) {
-        user = admin;
-        // Usar el rol de la base de datos en lugar de hardcodearlo
-        rol = admin.rol || 'administrador';
+        adminUser = admin;
+        availableRoles.push({
+          rol: admin.rol || 'administrador',
+          tabla: 'usuarios',
+          id: admin.id,
+          nombre: `${admin.nombres} ${admin.apellidos}`
+        });
       }
     }
 
-    // 2. Si no es un admin válido, intentar como Profesor
-    if (!user) {
-      const profesor = await db.Profesor.findOne({ where: { email: correo_electronico } });
-      if (profesor) {
-        // --- SIN CAMBIOS AQUÍ ---
-        // La propiedad 'password' es correcta para la tabla de profesores.
-        const isPasswordCorrect = await bcrypt.compare(contraseña, profesor.password);
-        if (isPasswordCorrect) {
-          user = profesor;
-          rol = 'profesor';
-        }
+    // 2. Buscar en tabla profesores
+    const profesor = await db.Profesor.findOne({ where: { email: correo_electronico } });
+    if (profesor) {
+      const isPasswordCorrect = await bcrypt.compare(contraseña, profesor.password);
+      if (isPasswordCorrect) {
+        profesorUser = profesor;
+        availableRoles.push({
+          rol: 'profesor',
+          tabla: 'profesores',
+          id: profesor.id,
+          nombre: `${profesor.nombres} ${profesor.apellidos}`
+        });
       }
     }
 
     // 3. Si no se encontró a nadie, rechazar
-    if (!user) {
+    if (availableRoles.length === 0) {
       return res.status(401).json({ success: false, message: 'Credenciales inválidas.' });
     }
 
-    // --- El resto de la función es idéntica y correcta ---
+    // 4. Si hay múltiples roles y no se ha seleccionado uno, pedir selección
+    if (availableRoles.length > 1 && !rol_seleccionado) {
+      return res.json({
+        success: true,
+        multipleRoles: true,
+        roles: availableRoles.map(r => ({
+          rol: r.rol,
+          nombre: r.nombre,
+          descripcion: r.rol === 'profesor' ? 'Acceso como Docente' :
+                       r.rol === 'comision_academica' ? 'Acceso como Comisión Académica' :
+                       r.rol === 'administrador' ? 'Acceso como Administrador' :
+                       `Acceso como ${r.rol}`
+        }))
+      });
+    }
+
+    // 5. Seleccionar el rol correcto
+    let user = null;
+    let rol = null;
+
+    if (rol_seleccionado) {
+      // El usuario eligió un rol específico
+      const selectedRole = availableRoles.find(r => r.rol === rol_seleccionado);
+      if (!selectedRole) {
+        return res.status(400).json({ success: false, message: 'Rol seleccionado no válido.' });
+      }
+      if (selectedRole.tabla === 'usuarios') {
+        user = adminUser;
+        rol = selectedRole.rol;
+      } else {
+        user = profesorUser;
+        rol = 'profesor';
+      }
+    } else {
+      // Solo un rol disponible
+      const singleRole = availableRoles[0];
+      if (singleRole.tabla === 'usuarios') {
+        user = adminUser;
+        rol = singleRole.rol;
+      } else {
+        user = profesorUser;
+        rol = 'profesor';
+      }
+    }
+
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Error al seleccionar rol.' });
+    }
+
+    // 6. Generar token y responder
     const payload = { id: user.id, rol: rol };
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '8h' });
 
     const userResponse = user.toJSON();
-    // Elimina la propiedad correcta de la respuesta para no exponer el hash
     delete userResponse.password; 
     delete userResponse.contraseña; 
-    userResponse.rol = rol; 
+    userResponse.rol = rol;
+    userResponse.availableRoles = availableRoles.map(r => r.rol);
 
     res.json({ success: true, token, user: userResponse });
 

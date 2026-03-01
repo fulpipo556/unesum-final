@@ -32,6 +32,7 @@ interface Asignatura {
   organizacion: string | null;
   tiene_syllabus: boolean;
   syllabus_id?: number;
+  syllabus_source?: string;
   tiene_programa: boolean;
   programa_id?: number;
 }
@@ -62,9 +63,13 @@ export default function AsignaturasComisionPage() {
   const [periodoSeleccionado, setPeriodoSeleccionado] = useState<string>('');
 
   useEffect(() => {
-    cargarEstructura();
     cargarPeriodos();
   }, []);
+
+  // Recargar estructura cuando cambia el periodo seleccionado
+  useEffect(() => {
+    cargarEstructura();
+  }, [periodoSeleccionado]);
 
   const cargarPeriodos = async () => {
     try {
@@ -170,7 +175,8 @@ export default function AsignaturasComisionPage() {
       setLoading(true);
       const token = localStorage.getItem('token');
       
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/comision-academica/estructura-facultad`, {
+      const urlParams = periodoSeleccionado ? `?periodo=${periodoSeleccionado}` : '';
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/comision-academica/estructura-facultad${urlParams}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -487,9 +493,9 @@ export default function AsignaturasComisionPage() {
                         
                         <div className="flex gap-2">
                           {asignatura.tiene_syllabus ? (
-                            <Link href={`/dashboard/comision/editor-syllabus?asignatura=${asignatura.id}`}>
-                              <Button size="sm" variant="outline">
-                                <BookOpen className="h-4 w-4 mr-1" />
+                            <Link href={`/dashboard/comision/editor-syllabus?id=${asignatura.syllabus_id}&asignatura=${asignatura.id}&periodo=${periodoSeleccionado}&source=${asignatura.syllabus_source || 'comision'}`}>
+                              <Button size="sm" variant="outline" className="border-green-300 text-green-700 bg-green-50">
+                                <CheckCircle2 className="h-4 w-4 mr-1" />
                                 Ver Syllabus
                               </Button>
                             </Link>
@@ -506,15 +512,15 @@ export default function AsignaturasComisionPage() {
                           )}
                           
                           {asignatura.tiene_programa ? (
-                            <Link href={`/dashboard/comision/crear-programa-analitico?asignatura=${asignatura.id}`}>
-                              <Button size="sm" variant="outline">
-                                <FileText className="h-4 w-4 mr-1" />
+                            <Link href={`/dashboard/comision/crear-programa-analitico?id=${asignatura.programa_id}&asignatura=${asignatura.id}&periodo=${periodoSeleccionado}`}>
+                              <Button size="sm" variant="outline" className="border-green-300 text-green-700 bg-green-50">
+                                <CheckCircle2 className="h-4 w-4 mr-1" />
                                 Ver Programa
                               </Button>
                             </Link>
                           ) : (
-                            <Link href={`/dashboard/comision/crear-programa-analitico?asignatura=${asignatura.id}&nueva=true`}>
-                              <Button size="sm" variant="default" className={periodoSeleccionado ? '' : 'opacity-50 cursor-not-allowed'}>
+                            <Link href={`/dashboard/comision/crear-programa-analitico?asignatura=${asignatura.id}&periodo=${periodoSeleccionado}&nueva=true`}>
+                              <Button size="sm" variant="default" disabled={!periodoSeleccionado}>
                                 <Plus className="h-4 w-4 mr-1" />
                                 Crear Programa
                               </Button>

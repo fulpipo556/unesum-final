@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Pencil, Trash2, Plus, Save, Loader2, UserPlus } from "lucide-react"
+import { Pencil, Trash2, Plus, Save, Loader2, UserPlus, ChevronDown, ChevronUp, FileText, BookOpen, GraduationCap, X } from "lucide-react"
 
 import { useAuth } from "@/contexts/auth-context"
 
@@ -32,20 +32,62 @@ interface Profesor {
   asignatura_id?: number;
   nivel_id?: number;
   paralelo_id?: number;
-  // Sequelize incluye los datos asociados así:
   carrera?: {
     id: number;
     nombre: string;
     facultad?: {
         id: number;
         nombre: string;
-    }
+    };
+    mallas?: {
+        id: number;
+        codigo_malla: string;
+    }[];
   };
+  carreras?: {
+    id: number;
+    nombre: string;
+    facultad?: {
+        id: number;
+        nombre: string;
+    };
+  }[];
   asignatura?: {
     id: number;
     nombre: string;
     codigo: string;
+    programasAnaliticos?: {
+      id: number;
+      nombre: string;
+      periodo: string;
+    }[];
+    syllabi?: {
+      id: number;
+      nombre: string;
+      periodo: string;
+    }[];
   };
+  asignaturas?: {
+    id: number;
+    nombre: string;
+    codigo: string;
+    programasAnaliticos?: {
+      id: number;
+      nombre: string;
+      periodo: string;
+    }[];
+    syllabi?: {
+      id: number;
+      nombre: string;
+      periodo: string;
+    }[];
+    syllabusComision?: {
+      id: number;
+      nombre: string;
+      periodo: string;
+      estado: string;
+    }[];
+  }[];
   nivel?: {
     id: number;
     nombre: string;
@@ -55,7 +97,21 @@ interface Profesor {
     id: number;
     nombre: string;
     codigo: string;
-  }
+  };
+  syllabusDocente?: {
+    id: number;
+    nombre: string;
+    periodo: string;
+    estado: string;
+    asignatura_id: number;
+  }[];
+  programasDocente?: {
+    id: number;
+    nombre: string;
+    periodo: string;
+    estado: string;
+    asignatura_id: number;
+  }[];
 }
 
 // Hook de toast simulado (igual al que ya usas)
@@ -94,7 +150,16 @@ export default function GestionDocentesPage() {
   const [submitting, setSubmitting] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{
+    message: string;
+    errors?: string[];
+    summary?: { total: number; creados: number; errores: number };
+    type: 'success' | 'warning' | 'error';
+  } | null>(null);
   const [mounted, setMounted] = useState(false)
+  const [expandedProfesorId, setExpandedProfesorId] = useState<number | null>(null)
+  const [selectedCarrerasIds, setSelectedCarrerasIds] = useState<number[]>([])
+  const [selectedAsignaturasIds, setSelectedAsignaturasIds] = useState<number[]>([])
   const [formData, setFormData] = useState({
     nombres: "",
     apellidos: "",
@@ -118,49 +183,85 @@ export default function GestionDocentesPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       setSelectedFile(e.target.files[0]);
+      setUploadResult(null); // Limpiar resultado anterior
     }
   };
 
-    const handleUpload = async () => {
+  const handleUpload = async () => {
     if (!selectedFile) {
-      toast({ title: "Error", description: "Por favor, seleccione un archivo CSV para subir.", variant: "destructive" });
+      toast({ title: "Error", description: "Por favor, seleccione un archivo CSV o Excel para subir.", variant: "destructive" });
       return;
     }
 
     setUploading(true);
-    const formData = new FormData();
-    formData.append('file', selectedFile); // 'file' debe coincidir con el backend
+    setUploadResult(null);
+    const uploadFormData = new FormData();
+    uploadFormData.append('file', selectedFile);
 
     try {
-      // --- USA FETCH DIRECTAMENTE AQUÍ ---
-      const response = await fetch('https://backend-une.onrender.com/api/profesores/upload', {
+      const response = await fetch('http://localhost:4000/api/profesores/upload', {
         method: 'POST',
         headers: {
-          // NO pongas 'Content-Type'. El navegador lo hará por ti.
           "Authorization": `Bearer ${token || getToken()}`
         },
-        body: formData,
+        body: uploadFormData,
       });
-      // --- FIN DEL CAMBIO ---
       
       const result = await response.json();
 
-      if (!response.ok) {
-        const errorMessage = result.message + (result.errors ? `\nErrores: ${result.errors.join(', ')}` : '');
-        throw new Error(errorMessage);
+      if (response.status === 201) {
+        // Todos creados exitosamente
+        setUploadResult({
+          message: result.message,
+          summary: result.summary,
+          type: 'success'
+        });
+        fetchData();
+      } else if (response.status === 207) {
+        // Parcialmente exitoso
+        setUploadResult({
+          message: result.message,
+          errors: result.errors,
+          summary: result.summary,
+          type: 'warning'
+        });
+        fetchData();
+      } else {
+        // Error completo
+        setUploadResult({
+          message: result.message,
+          errors: result.errors,
+          summary: result.summary,
+          type: 'error'
+        });
       }
 
-      toast({ title: "Éxito", description: result.message || "Docentes importados correctamente." });
-      fetchData();
       setSelectedFile(null);
       const fileInput = document.getElementById('csv-file') as HTMLInputElement;
       if (fileInput) fileInput.value = "";
 
     } catch (error: any) {
-      toast({ title: "Error de Importación", description: error.message, variant: "destructive" });
+      setUploadResult({
+        message: error.message || 'Error de conexión al servidor.',
+        type: 'error'
+      });
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleDownloadTemplate = () => {
+    const csvContent = "nombres,apellidos,email,carrera_nombre,asignaturas,nivel_nombre,paralelo_nombre,carreras_adicionales,activo\n" +
+      "Juan Carlos,Pérez González,juan.perez@universidad.edu,Ingeniería en Sistemas,Matemáticas I;Física I,Primer Nivel,A,,true\n" +
+      "María Elena,López Ruiz,maria.lopez@universidad.edu,Medicina,Anatomía I,Primer Nivel,B,Enfermería,true";
+    
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'plantilla_docentes.csv';
+    link.click();
+    URL.revokeObjectURL(url);
   };
   const fetchData = async () => {
     try {
@@ -250,16 +351,19 @@ export default function GestionDocentesPage() {
     return profesores.filter(profesor => {
       let cumpleFiltros = true;
       
-      if (filtros.facultad) {
-        cumpleFiltros = cumpleFiltros && profesor.carrera?.facultad?.id === parseInt(filtros.facultad, 10);
+      if (filtros.facultad && filtros.facultad !== "todas") {
+        const facId = parseInt(filtros.facultad, 10);
+        const carreraPrincipalMatch = profesor.carrera?.facultad?.id === facId;
+        const carrerasAdicionalesMatch = profesor.carreras?.some(c => c.facultad?.id === facId) || false;
+        cumpleFiltros = cumpleFiltros && (carreraPrincipalMatch || carrerasAdicionalesMatch);
       }
       
-      if (filtros.carrera) {
-        cumpleFiltros = cumpleFiltros && profesor.carrera_id === parseInt(filtros.carrera, 10);
+      if (filtros.carrera && filtros.carrera !== "todas") {
+        const carId = parseInt(filtros.carrera, 10);
+        const carreraPrincipalMatch = profesor.carrera_id === carId;
+        const carrerasAdicionalesMatch = profesor.carreras?.some(c => c.id === carId) || false;
+        cumpleFiltros = cumpleFiltros && (carreraPrincipalMatch || carrerasAdicionalesMatch);
       }
-      
-      // Para filtrar por malla, necesitarías agregar malla_id a la tabla de profesores
-      // Si no existe esa relación, puedes omitir este filtro o agregarlo según tu estructura
       
       return cumpleFiltros;
     });
@@ -275,6 +379,8 @@ export default function GestionDocentesPage() {
 
   const handleNew = () => {
     setFormData({ nombres: "", apellidos: "", email: "", asignatura: "", nivel: "", paralelo: "", activo: true });
+    setSelectedCarrerasIds([]);
+    setSelectedAsignaturasIds([]);
     setEditingId(null);
   };
 
@@ -289,6 +395,18 @@ export default function GestionDocentesPage() {
       paralelo: profesor.paralelo_id ? profesor.paralelo_id.toString() : "",
       activo: profesor.activo,
     });
+    // Cargar las carreras asociadas
+    const carrerasProf = profesor.carreras?.map(c => c.id) || [];
+    if (carrerasProf.length === 0 && profesor.carrera_id) {
+      carrerasProf.push(profesor.carrera_id);
+    }
+    setSelectedCarrerasIds(carrerasProf);
+    // Cargar las asignaturas asociadas
+    const asignaturasProf = profesor.asignaturas?.map(a => a.id) || [];
+    if (asignaturasProf.length === 0 && profesor.asignatura_id) {
+      asignaturasProf.push(profesor.asignatura_id);
+    }
+    setSelectedAsignaturasIds(asignaturasProf);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -312,16 +430,29 @@ export default function GestionDocentesPage() {
     e.preventDefault();
     setSubmitting(true);
     
-    // Obtener carrera_id de la asignatura seleccionada
+    // Obtener carrera_id de la asignatura seleccionada o del filtro activo
     const asignaturaSeleccionada = asignaturas.find(a => a.id === parseInt(formData.asignatura, 10));
+    const carreraId = selectedCarrerasIds.length > 0
+      ? selectedCarrerasIds[0]
+      : (asignaturaSeleccionada 
+          ? asignaturaSeleccionada.carrera_id 
+          : (filtros.carrera && filtros.carrera !== "todas" ? parseInt(filtros.carrera, 10) : null));
+    
+    if (!carreraId) {
+      toast({ title: "Error", description: "Debe seleccionar una carrera en los filtros o una asignatura para asignar al docente.", variant: "destructive" });
+      setSubmitting(false);
+      return;
+    }
     
     const payload = {
       nombres: formData.nombres,
       apellidos: formData.apellidos,
       email: formData.email,
       activo: formData.activo,
-      carrera: asignaturaSeleccionada ? asignaturaSeleccionada.carrera_id : null,
-      asignatura_id: formData.asignatura ? parseInt(formData.asignatura, 10) : null,
+      carrera: carreraId,
+      carreras_ids: selectedCarrerasIds.length > 0 ? selectedCarrerasIds : [carreraId],
+      asignatura_id: selectedAsignaturasIds.length > 0 ? selectedAsignaturasIds[0] : (formData.asignatura ? parseInt(formData.asignatura, 10) : null),
+      asignaturas_ids: selectedAsignaturasIds.length > 0 ? selectedAsignaturasIds : (formData.asignatura ? [parseInt(formData.asignatura, 10)] : []),
       nivel_id: formData.nivel ? parseInt(formData.nivel, 10) : null,
       paralelo_id: formData.paralelo ? parseInt(formData.paralelo, 10) : null
     };
@@ -483,29 +614,104 @@ export default function GestionDocentesPage() {
 
               {/* =========== INICIO DE LA CORRECCIÓN =========== */}
               <CardContent>
-                {/* --- SECCIÓN DE CARGA MASIVA (FUERA DEL OTRO FORMULARIO) --- */}
-                <div className="mb-8 p-4 border rounded-lg">
-                  <Label className="text-lg font-semibold">Carga Masiva desde CSV</Label>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Las columnas deben ser: nombres, apellidos, email, carrera_nombre.
+                {/* --- SECCIÓN DE CARGA MASIVA --- */}
+                <div className="mb-8 p-4 border-2 border-dashed border-blue-300 rounded-lg bg-blue-50/30">
+                  <Label className="text-lg font-semibold text-blue-900">Carga Masiva de Docentes</Label>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Suba un archivo CSV o Excel (.xlsx) para crear múltiples docentes a la vez.
                   </p>
-                  <div className="flex flex-col md:flex-row gap-4 items-center">
-                    <div className="grid w-full max-w-sm items-center gap-1.5">
-                      <Input id="csv-file" type="file" accept=".csv" onChange={handleFileChange} />
+                  
+                  {/* Estructura de columnas */}
+                  <div className="bg-white rounded-md border p-3 mb-4">
+                    <p className="text-xs font-semibold text-gray-700 mb-1">Columnas del archivo:</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                      <div><Badge className="bg-red-100 text-red-800 mr-1">Obligatorio</Badge> <code>nombres</code> — Nombres del docente</div>
+                      <div><Badge className="bg-red-100 text-red-800 mr-1">Obligatorio</Badge> <code>apellidos</code> — Apellidos del docente</div>
+                      <div><Badge className="bg-red-100 text-red-800 mr-1">Obligatorio</Badge> <code>email</code> — Correo electrónico</div>
+                      <div><Badge className="bg-red-100 text-red-800 mr-1">Obligatorio</Badge> <code>carrera_nombre</code> — Nombre de la carrera principal</div>
+                      <div><Badge className="bg-blue-100 text-blue-800 mr-1">Opcional</Badge> <code>asignaturas</code> — Asignaturas separadas por <code>;</code></div>
+                      <div><Badge className="bg-blue-100 text-blue-800 mr-1">Opcional</Badge> <code>nivel_nombre</code> — Nombre o código del nivel</div>
+                      <div><Badge className="bg-blue-100 text-blue-800 mr-1">Opcional</Badge> <code>paralelo_nombre</code> — Nombre o código del paralelo</div>
+                      <div><Badge className="bg-blue-100 text-blue-800 mr-1">Opcional</Badge> <code>carreras_adicionales</code> — Carreras extra separadas por <code>;</code></div>
+                      <div><Badge className="bg-blue-100 text-blue-800 mr-1">Opcional</Badge> <code>activo</code> — true/false (default: true)</div>
                     </div>
-                    <Button 
-                      onClick={handleUpload} 
-                      disabled={uploading || !selectedFile} 
-                      className="bg-blue-600 hover:bg-blue-700 self-start"
-                    >
-                      {uploading ? (
-                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> PROCESANDO...</>
-                      ) : (
-                        <><UserPlus className="mr-2 h-4 w-4" /> IMPORTAR</>
-                      )}
-                    </Button>
                   </div>
-                   {selectedFile && <p className="text-sm text-muted-foreground mt-2">Archivo: {selectedFile.name}</p>}
+
+                  <div className="flex flex-col md:flex-row gap-4 items-start">
+                    <div className="grid w-full max-w-sm items-center gap-1.5">
+                      <Input id="csv-file" type="file" accept=".csv,.xlsx,.xls" onChange={handleFileChange} />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button 
+                        onClick={handleUpload} 
+                        disabled={uploading || !selectedFile} 
+                        className="bg-blue-600 hover:bg-blue-700"
+                      >
+                        {uploading ? (
+                          <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> PROCESANDO...</>
+                        ) : (
+                          <><UserPlus className="mr-2 h-4 w-4" /> IMPORTAR</>
+                        )}
+                      </Button>
+                      <Button 
+                        type="button"
+                        variant="outline" 
+                        onClick={handleDownloadTemplate}
+                        className="border-blue-400 text-blue-700 hover:bg-blue-50"
+                      >
+                        📥 DESCARGAR PLANTILLA CSV
+                      </Button>
+                    </div>
+                  </div>
+                  {selectedFile && <p className="text-sm text-muted-foreground mt-2">Archivo seleccionado: <strong>{selectedFile.name}</strong></p>}
+                  
+                  {/* Resultado de la carga */}
+                  {uploadResult && (
+                    <div className={`mt-4 rounded-lg border p-4 ${
+                      uploadResult.type === 'success' ? 'bg-green-50 border-green-300' :
+                      uploadResult.type === 'warning' ? 'bg-yellow-50 border-yellow-300' :
+                      'bg-red-50 border-red-300'
+                    }`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-lg">{uploadResult.type === 'success' ? '✅' : uploadResult.type === 'warning' ? '⚠️' : '❌'}</span>
+                        <p className={`font-semibold text-sm ${
+                          uploadResult.type === 'success' ? 'text-green-800' :
+                          uploadResult.type === 'warning' ? 'text-yellow-800' :
+                          'text-red-800'
+                        }`}>
+                          {uploadResult.message}
+                        </p>
+                      </div>
+                      
+                      {uploadResult.summary && (
+                        <div className="flex gap-4 mb-2 text-sm">
+                          <span className="text-gray-600">Total filas: <strong>{uploadResult.summary.total}</strong></span>
+                          <span className="text-green-700">Creados: <strong>{uploadResult.summary.creados}</strong></span>
+                          <span className="text-red-700">Errores: <strong>{uploadResult.summary.errores}</strong></span>
+                        </div>
+                      )}
+                      
+                      {uploadResult.errors && uploadResult.errors.length > 0 && (
+                        <details className="mt-2">
+                          <summary className="text-sm cursor-pointer text-gray-600 hover:text-gray-800">
+                            Ver detalle de errores ({uploadResult.errors.length})
+                          </summary>
+                          <ul className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+                            {uploadResult.errors.map((err, idx) => (
+                              <li key={idx} className="text-xs text-red-700 bg-red-100 rounded px-2 py-1">{err}</li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                      
+                      <button 
+                        onClick={() => setUploadResult(null)}
+                        className="text-xs text-gray-500 hover:text-gray-700 mt-2 underline"
+                      >
+                        Cerrar
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <hr className="my-6" />
@@ -521,9 +727,113 @@ export default function GestionDocentesPage() {
                         <div className="grid gap-2"><Label htmlFor="apellidos">Apellidos</Label><Input id="apellidos" name="apellidos" placeholder="Ej: Pérez González" value={formData.apellidos} onChange={(e) => setFormData({...formData, apellidos: e.target.value})} required /></div>
                     </div>
                     <div className="grid gap-2"><Label htmlFor="email">Correo Electrónico</Label><Input id="email" name="email" type="email" placeholder="juan.perez@universidad.edu" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} required /></div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    
+                    {/* --- SELECTOR MÚLTIPLE DE CARRERAS --- */}
+                    <div className="grid gap-2">
+                      <Label>Carreras Asignadas</Label>
+                      <p className="text-sm text-muted-foreground">Seleccione una o más carreras para este docente. La primera será la carrera principal.</p>
+                      <div className="flex gap-2">
+                        <Select
+                          onValueChange={(v) => {
+                            const id = parseInt(v, 10);
+                            if (!selectedCarrerasIds.includes(id)) {
+                              setSelectedCarrerasIds(prev => [...prev, id]);
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="flex-1">
+                            <SelectValue placeholder="Agregar carrera..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {carreras
+                              .filter(c => !selectedCarrerasIds.includes(c.id))
+                              .map((c) => (
+                                <SelectItem key={c.id} value={c.id.toString()}>
+                                  {c.nombre}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {selectedCarrerasIds.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {selectedCarrerasIds.map((cid, idx) => {
+                            const car = carreras.find(c => c.id === cid);
+                            return (
+                              <Badge key={cid} variant="outline" className={`text-sm py-1 px-3 ${idx === 0 ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                                {car?.nombre || `Carrera #${cid}`}
+                                {idx === 0 && <span className="ml-1 text-xs">(principal)</span>}
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedCarrerasIds(prev => prev.filter(id => id !== cid))}
+                                  className="ml-2 hover:text-red-600"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {selectedCarrerasIds.length === 0 && (
+                        <p className="text-xs text-amber-600">Si no selecciona carreras, se usará la carrera del filtro activo.</p>
+                      )}
+                    </div>
+                    
+                    {/* --- SELECTOR MÚLTIPLE DE ASIGNATURAS --- */}
+                    <div className="grid gap-2">
+                      <Label>Asignaturas Asignadas</Label>
+                      <p className="text-sm text-muted-foreground">Seleccione una o más asignaturas. La primera será la asignatura principal.</p>
+                      <div className="flex gap-2">
+                        <Select
+                          onValueChange={(v) => {
+                            const id = parseInt(v, 10);
+                            if (!selectedAsignaturasIds.includes(id)) {
+                              setSelectedAsignaturasIds(prev => [...prev, id]);
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="flex-1">
+                            <SelectValue placeholder="Agregar asignatura..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {asignaturasFiltradas
+                              .filter(a => !selectedAsignaturasIds.includes(a.id))
+                              .map((a) => (
+                                <SelectItem key={a.id} value={a.id.toString()}>
+                                  {a.nombre}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {selectedAsignaturasIds.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {selectedAsignaturasIds.map((aid, idx) => {
+                            const asig = asignaturas.find(a => a.id === aid);
+                            return (
+                              <Badge key={aid} variant="outline" className={`text-sm py-1 px-3 ${idx === 0 ? 'bg-indigo-100 text-indigo-800 border-indigo-300' : 'bg-cyan-50 text-cyan-700 border-cyan-200'}`}>
+                                {asig?.nombre || `Asignatura #${aid}`}
+                                {idx === 0 && <span className="ml-1 text-xs">(principal)</span>}
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedAsignaturasIds(prev => prev.filter(id => id !== aid))}
+                                  className="ml-2 hover:text-red-600"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {selectedAsignaturasIds.length === 0 && (
+                        <p className="text-xs text-amber-600">Seleccione al menos una asignatura para el docente.</p>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="grid gap-2"><Label htmlFor="nivel">Nivel</Label><Select name="nivel" value={formData.nivel} onValueChange={(v) => handleSelectChange('nivel', v)}><SelectTrigger id="nivel"><SelectValue placeholder="Seleccione nivel" /></SelectTrigger><SelectContent>{niveles.map((n) => (<SelectItem key={n.id} value={n.id.toString()}>{n.nombre}</SelectItem>))}</SelectContent></Select></div>
-                        <div className="grid gap-2"><Label htmlFor="asignatura">Asignatura</Label><Select name="asignatura" value={formData.asignatura} onValueChange={(v) => handleSelectChange('asignatura', v)} required><SelectTrigger id="asignatura"><SelectValue placeholder="Seleccione asignatura" /></SelectTrigger><SelectContent>{asignaturasFiltradas.map((a) => (<SelectItem key={a.id} value={a.id.toString()}>{a.nombre}</SelectItem>))}</SelectContent></Select></div>
                         <div className="grid gap-2"><Label htmlFor="paralelo">Paralelo</Label><Select name="paralelo" value={formData.paralelo} onValueChange={(v) => handleSelectChange('paralelo', v)}><SelectTrigger id="paralelo"><SelectValue placeholder="Seleccione paralelo" /></SelectTrigger><SelectContent>{paralelos.map((p) => (<SelectItem key={p.id} value={p.id.toString()}>{p.nombre}</SelectItem>))}</SelectContent></Select></div>
                     </div>
                     <div className="flex items-center space-x-4 rounded-md border p-4">
@@ -555,34 +865,266 @@ export default function GestionDocentesPage() {
                     </div>
                   ) : (
                     <Table>
-                      <TableHeader><TableRow className="bg-gray-50"><TableHead>N.</TableHead><TableHead>Docente</TableHead><TableHead>Carrera</TableHead><TableHead>Asignatura</TableHead><TableHead>Nivel</TableHead><TableHead>Paralelo</TableHead><TableHead>Estado</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50">
+                          <TableHead className="w-8">N.</TableHead>
+                          <TableHead>Docente</TableHead>
+                          <TableHead>Carrera</TableHead>
+                          <TableHead>Malla</TableHead>
+                          <TableHead>Asignatura</TableHead>
+                          <TableHead>Nivel</TableHead>
+                          <TableHead>Paralelo</TableHead>
+                          <TableHead className="text-center">P. Analítico</TableHead>
+                          <TableHead className="text-center">Syllabus</TableHead>
+                          <TableHead>Estado</TableHead>
+                          <TableHead>Acciones</TableHead>
+                        </TableRow>
+                      </TableHeader>
                       <TableBody>
-                        {profesoresFiltrados.map((profesor, index) => (
-                          <TableRow key={profesor.id}>
-                            <TableCell>{index + 1}</TableCell>
-                            <TableCell>
-                                <div className="font-medium">{profesor.nombres} {profesor.apellidos}</div>
-                                <div className="text-sm text-muted-foreground">{profesor.email}</div>
-                            </TableCell>
-                            <TableCell>{profesor.carrera?.nombre || "N/A"}</TableCell>
-                            <TableCell>
-                              {profesor.asignatura ? (
-                                <div className="font-medium">{profesor.asignatura.nombre}</div>
-                              ) : <span className="text-muted-foreground">No asignado</span>}
-                            </TableCell>
-                            <TableCell>{profesor.nivel?.nombre || <span className="text-muted-foreground">No asignado</span>}</TableCell>
-                            <TableCell>{profesor.paralelo?.nombre || <span className="text-muted-foreground">No asignado</span>}</TableCell>
-                            <TableCell><Badge variant={profesor.activo ? "default" : "secondary"} className={profesor.activo ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}>{profesor.activo ? "Activo" : "Inactivo"}</Badge></TableCell>
-                            <TableCell>
-                              <div className="flex gap-2">
-                                <Button variant="outline" size="sm" onClick={() => handleEdit(profesor)} className="text-blue-600 border-blue-200 hover:bg-blue-50"><Pencil className="h-4 w-4" /></Button>
-                                <Button variant="outline" size="sm" onClick={() => handleDelete(profesor.id)} className="text-red-600 border-red-200 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {profesoresFiltrados.map((profesor, index) => {
+                          const isExpanded = expandedProfesorId === profesor.id;
+                          const mallasProf = profesor.carrera?.mallas || [];
+                          
+                          // Combinar asignaturas: usar la relación muchos-a-muchos si existe, si no la singular
+                          const todasAsignaturas = profesor.asignaturas && profesor.asignaturas.length > 0
+                            ? profesor.asignaturas
+                            : profesor.asignatura ? [profesor.asignatura] : [];
+                          
+                          // Contar documentos sumando de TODAS las asignaturas
+                          const programasDocente = profesor.programasDocente || [];
+                          const syllabusDocente = profesor.syllabusDocente || [];
+                          
+                          let totalProgramas = programasDocente.length;
+                          let totalSyllabus = syllabusDocente.length;
+                          todasAsignaturas.forEach(asig => {
+                            totalProgramas += (asig.programasAnaliticos?.length || 0);
+                            totalSyllabus += (asig.syllabi?.length || 0);
+                          });
+                          
+                          return (
+                            <>
+                              <TableRow key={profesor.id} className={isExpanded ? "bg-emerald-50 border-b-0" : ""}>
+                                <TableCell>{index + 1}</TableCell>
+                                <TableCell>
+                                  <div className="font-medium">{profesor.nombres} {profesor.apellidos}</div>
+                                  <div className="text-sm text-muted-foreground">{profesor.email}</div>
+                                </TableCell>
+                                <TableCell>
+                                  {(() => {
+                                    const todasCarreras = profesor.carreras && profesor.carreras.length > 0
+                                      ? profesor.carreras
+                                      : profesor.carrera ? [profesor.carrera] : [];
+                                    return todasCarreras.length > 0 ? (
+                                      <div className="flex flex-col gap-1">
+                                        {todasCarreras.map((c, idx) => (
+                                          <Badge key={c.id} variant="outline" className={`text-xs ${idx === 0 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                                            {c.nombre}
+                                            {idx === 0 && todasCarreras.length > 1 && <span className="ml-1 opacity-60">(P)</span>}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    ) : "N/A";
+                                  })()}
+                                </TableCell>
+                                <TableCell>
+                                  {mallasProf.length > 0 ? (
+                                    <div className="flex flex-col gap-1">
+                                      {mallasProf.map(m => (
+                                        <Badge key={m.id} variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                          <GraduationCap className="h-3 w-3 mr-1" />
+                                          {m.codigo_malla}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  ) : <span className="text-muted-foreground text-sm">Sin malla</span>}
+                                </TableCell>
+                                <TableCell>
+                                  {todasAsignaturas.length > 0 ? (
+                                    <div className="flex flex-col gap-1">
+                                      {todasAsignaturas.map((a, idx) => (
+                                        <Badge key={a.id} variant="outline" className={`text-xs ${idx === 0 ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-cyan-50 text-cyan-700 border-cyan-200'}`}>
+                                          {a.nombre}
+                                          {idx === 0 && todasAsignaturas.length > 1 && <span className="ml-1 opacity-60">(P)</span>}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  ) : <span className="text-muted-foreground text-sm">No asignado</span>}
+                                </TableCell>
+                                <TableCell>{profesor.nivel?.nombre || <span className="text-muted-foreground text-sm">N/A</span>}</TableCell>
+                                <TableCell>{profesor.paralelo?.nombre || <span className="text-muted-foreground text-sm">N/A</span>}</TableCell>
+                                <TableCell className="text-center">
+                                  {totalProgramas > 0 ? (
+                                    <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-200 cursor-pointer" onClick={() => setExpandedProfesorId(isExpanded ? null : profesor.id)}>
+                                      <FileText className="h-3 w-3 mr-1" />{totalProgramas}
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="outline" className="text-gray-400 border-gray-200">0</Badge>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  {totalSyllabus > 0 ? (
+                                    <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-200 cursor-pointer" onClick={() => setExpandedProfesorId(isExpanded ? null : profesor.id)}>
+                                      <BookOpen className="h-3 w-3 mr-1" />{totalSyllabus}
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="outline" className="text-gray-400 border-gray-200">0</Badge>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant={profesor.activo ? "default" : "secondary"} className={profesor.activo ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}>
+                                    {profesor.activo ? "Activo" : "Inactivo"}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex gap-1">
+                                    <Button 
+                                      variant="outline" 
+                                      size="sm" 
+                                      onClick={() => setExpandedProfesorId(isExpanded ? null : profesor.id)} 
+                                      className="text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+                                      title="Ver documentos"
+                                    >
+                                      {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                    </Button>
+                                    <Button variant="outline" size="sm" onClick={() => handleEdit(profesor)} className="text-blue-600 border-blue-200 hover:bg-blue-50"><Pencil className="h-4 w-4" /></Button>
+                                    <Button variant="outline" size="sm" onClick={() => handleDelete(profesor.id)} className="text-red-600 border-red-200 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                              
+                              {/* Fila expandible con detalles de documentos */}
+                              {isExpanded && (
+                                <TableRow key={`${profesor.id}-detail`} className="bg-emerald-50/50">
+                                  <TableCell colSpan={11} className="p-4">
+                                    <div className="space-y-4">
+                                      {/* Mallas */}
+                                      <div className="bg-white rounded-lg border p-4">
+                                        <h4 className="font-semibold text-sm flex items-center gap-2 mb-3 text-blue-800">
+                                          <GraduationCap className="h-4 w-4" /> Mallas Curriculares
+                                        </h4>
+                                        {mallasProf.length > 0 ? (
+                                          <ul className="flex flex-wrap gap-2">
+                                            {mallasProf.map(m => (
+                                              <li key={m.id} className="flex items-center gap-2 text-sm bg-blue-50 rounded p-2">
+                                                <GraduationCap className="h-3 w-3 text-blue-600" />
+                                                <span>{m.codigo_malla}</span>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        ) : (
+                                          <p className="text-sm text-gray-500">No hay mallas para esta carrera.</p>
+                                        )}
+                                      </div>
+
+                                      {/* Documentos por Asignatura */}
+                                      {todasAsignaturas.length > 0 ? (
+                                        todasAsignaturas.map((asig, asigIdx) => {
+                                          const paAsig = asig.programasAnaliticos || [];
+                                          const sylAsig = asig.syllabi || [];
+                                          // Filtrar los documentos del docente para esta asignatura
+                                          const pdAsig = (profesor.programasDocente || []).filter(pd => pd.asignatura_id === asig.id);
+                                          const sdAsig = (profesor.syllabusDocente || []).filter(sd => sd.asignatura_id === asig.id);
+                                          
+                                          return (
+                                            <div key={asig.id} className="bg-white rounded-lg border p-4">
+                                              <h4 className="font-semibold text-sm flex items-center gap-2 mb-3 text-gray-800 border-b pb-2">
+                                                <Badge variant="outline" className={`${asigIdx === 0 ? 'bg-indigo-100 text-indigo-800 border-indigo-300' : 'bg-cyan-50 text-cyan-700 border-cyan-200'}`}>
+                                                  {asig.nombre}
+                                                </Badge>
+                                                {asig.codigo && <span className="text-xs text-gray-500">({asig.codigo})</span>}
+                                              </h4>
+                                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                {/* Programas Analíticos de esta asignatura */}
+                                                <div className="bg-purple-50/50 rounded-lg p-3">
+                                                  <h5 className="font-semibold text-xs flex items-center gap-2 mb-2 text-purple-800">
+                                                    <FileText className="h-3 w-3" /> Programas Analíticos
+                                                  </h5>
+                                                  {(paAsig.length > 0 || pdAsig.length > 0) ? (
+                                                    <ul className="space-y-2">
+                                                      {paAsig.map(pa => (
+                                                        <li key={`pa-${pa.id}`} className="flex items-center justify-between text-sm bg-purple-50 rounded p-2">
+                                                          <div>
+                                                            <div className="font-medium">{pa.nombre}</div>
+                                                            <div className="text-xs text-gray-500">{pa.periodo || 'Sin periodo'}</div>
+                                                          </div>
+                                                          <Badge variant="outline" className="text-xs bg-purple-100 text-purple-700">Asignatura</Badge>
+                                                        </li>
+                                                      ))}
+                                                      {pdAsig.map(pd => (
+                                                        <li key={`pd-${pd.id}`} className="flex items-center justify-between text-sm bg-purple-50 rounded p-2">
+                                                          <div>
+                                                            <div className="font-medium">{pd.nombre}</div>
+                                                            <div className="text-xs text-gray-500">{pd.periodo || 'Sin periodo'}</div>
+                                                          </div>
+                                                          <Badge className={
+                                                            pd.estado === 'aprobado' ? 'bg-green-100 text-green-800' : 
+                                                            pd.estado === 'enviado' ? 'bg-yellow-100 text-yellow-800' : 
+                                                            'bg-gray-100 text-gray-800'
+                                                          }>
+                                                            {pd.estado}
+                                                          </Badge>
+                                                        </li>
+                                                      ))}
+                                                    </ul>
+                                                  ) : (
+                                                    <p className="text-sm text-gray-500">Sin programas analíticos.</p>
+                                                  )}
+                                                </div>
+                                                
+                                                {/* Syllabus de esta asignatura */}
+                                                <div className="bg-orange-50/50 rounded-lg p-3">
+                                                  <h5 className="font-semibold text-xs flex items-center gap-2 mb-2 text-orange-800">
+                                                    <BookOpen className="h-3 w-3" /> Syllabus
+                                                  </h5>
+                                                  {(sylAsig.length > 0 || sdAsig.length > 0) ? (
+                                                    <ul className="space-y-2">
+                                                      {sylAsig.map(s => (
+                                                        <li key={`s-${s.id}`} className="flex items-center justify-between text-sm bg-orange-50 rounded p-2">
+                                                          <div>
+                                                            <div className="font-medium">{s.nombre}</div>
+                                                            <div className="text-xs text-gray-500">{s.periodo || 'Sin periodo'}</div>
+                                                          </div>
+                                                          <Badge variant="outline" className="text-xs bg-orange-100 text-orange-700">Asignatura</Badge>
+                                                        </li>
+                                                      ))}
+                                                      {sdAsig.map(sd => (
+                                                        <li key={`sd-${sd.id}`} className="flex items-center justify-between text-sm bg-orange-50 rounded p-2">
+                                                          <div>
+                                                            <div className="font-medium">{sd.nombre}</div>
+                                                            <div className="text-xs text-gray-500">{sd.periodo || 'Sin periodo'}</div>
+                                                          </div>
+                                                          <Badge className={
+                                                            sd.estado === 'aprobado' ? 'bg-green-100 text-green-800' : 
+                                                            sd.estado === 'enviado' ? 'bg-yellow-100 text-yellow-800' : 
+                                                            'bg-gray-100 text-gray-800'
+                                                          }>
+                                                            {sd.estado}
+                                                          </Badge>
+                                                        </li>
+                                                      ))}
+                                                    </ul>
+                                                  ) : (
+                                                    <p className="text-sm text-gray-500">Sin syllabus.</p>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            </div>
+                                          );
+                                        })
+                                      ) : (
+                                        <div className="bg-white rounded-lg border p-4">
+                                          <p className="text-sm text-gray-500">No hay asignaturas asignadas a este docente.</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </>
+                          );
+                        })}
                         {profesoresFiltrados.length === 0 && (
-                          <TableRow><TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                          <TableRow><TableCell colSpan={11} className="text-center py-8 text-gray-500">
                             No se encontraron docentes para esta carrera.
                           </TableCell></TableRow>
                         )}

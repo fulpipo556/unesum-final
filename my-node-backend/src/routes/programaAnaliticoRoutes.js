@@ -63,7 +63,7 @@ router.post('/upload', authenticate, programaAnaliticoController.uploadExcel);
 router.get('/', authenticate, programaAnaliticoController.getAll);
 
 // Crear un nuevo programa analítico (compatible con editor)
-router.post('/', authenticate, authorize(['profesor', 'administrador', 'comision_academica']), programaAnaliticoController.create);
+router.post('/', authenticate, authorize(['profesor', 'administrador', 'comision_academica', 'comision']), programaAnaliticoController.create);
 
 // Obtener programas disponibles con plantillas (para docentes)
 router.get('/disponibles', authenticate, programaAnaliticoController.getProgramasDisponibles);
@@ -130,7 +130,7 @@ router.delete('/sesion-extraccion/:sessionId/agrupaciones', authenticate, author
 router.get('/:id', authenticate, programaAnaliticoController.getById);
 
 // Actualizar un programa analítico (compatible con editor)
-router.put('/:id', authenticate, authorize(['profesor', 'administrador', 'comision_academica']), programaAnaliticoController.update);
+router.put('/:id', authenticate, authorize(['profesor', 'administrador', 'comision_academica', 'comision']), programaAnaliticoController.update);
 
 // Eliminar un programa analítico
 router.delete('/:id', authenticate, programaAnaliticoController.delete);

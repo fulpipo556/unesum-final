@@ -4,6 +4,8 @@ const db = require('../models');
 const Profesor = db.Profesor;
 const Carrera = db.Carrera;
 const Facultad = db.Facultad;
+const ProfesorCarrera = db.ProfesorCarrera;
+const ProfesorAsignatura = db.ProfesorAsignatura;
 const { Op } = require('sequelize'); // Importar Op para consultas complejas
 const fs = require('fs');
 const xlsx = require('xlsx');
@@ -213,22 +215,81 @@ exports.getAll = async (req, res) => {
   try {
     const profesores = await Profesor.findAll({
       order: [['apellidos', 'ASC'], ['nombres', 'ASC']],
-      // Incluir información anidada para mostrar en la tabla del frontend
       include: [
         {
           model: Carrera,
           as: 'carrera',
           attributes: ['id', 'nombre'],
-          include: {
-            model: Facultad,
-            as: 'facultad',
-            attributes: ['id', 'nombre']
-          }
+          include: [
+            {
+              model: Facultad,
+              as: 'facultad',
+              attributes: ['id', 'nombre']
+            },
+            {
+              model: db.Malla,
+              as: 'mallas',
+              attributes: ['id', 'codigo_malla']
+            }
+          ]
+        },
+        {
+          model: Carrera,
+          as: 'carreras',
+          attributes: ['id', 'nombre'],
+          through: { attributes: [] },
+          include: [
+            {
+              model: Facultad,
+              as: 'facultad',
+              attributes: ['id', 'nombre']
+            }
+          ]
         },
         {
           model: db.Asignatura,
           as: 'asignatura',
-          attributes: ['id', 'nombre', 'codigo']
+          attributes: ['id', 'nombre', 'codigo'],
+          include: [
+            {
+              model: db.ProgramasAnaliticos,
+              as: 'programasAnaliticos',
+              attributes: ['id', 'nombre', 'periodo'],
+              required: false
+            },
+            {
+              model: db.Syllabus,
+              as: 'syllabi',
+              attributes: ['id', 'nombre', 'periodo'],
+              required: false
+            }
+          ]
+        },
+        {
+          model: db.Asignatura,
+          as: 'asignaturas',
+          attributes: ['id', 'nombre', 'codigo'],
+          through: { attributes: [] },
+          include: [
+            {
+              model: db.ProgramasAnaliticos,
+              as: 'programasAnaliticos',
+              attributes: ['id', 'nombre', 'periodo'],
+              required: false
+            },
+            {
+              model: db.Syllabus,
+              as: 'syllabi',
+              attributes: ['id', 'nombre', 'periodo'],
+              required: false
+            },
+            {
+              model: db.SyllabusComisionAcademica,
+              as: 'syllabusComision',
+              attributes: ['id', 'nombre', 'periodo', 'estado'],
+              required: false
+            }
+          ]
         },
         {
           model: db.Nivel,
@@ -239,6 +300,18 @@ exports.getAll = async (req, res) => {
           model: db.Paralelo,
           as: 'paralelo',
           attributes: ['id', 'nombre', 'codigo']
+        },
+        {
+          model: db.SyllabusDocente,
+          as: 'syllabusDocente',
+          attributes: ['id', 'nombre', 'periodo', 'estado', 'asignatura_id'],
+          required: false
+        },
+        {
+          model: db.ProgramaAnaliticoDocente,
+          as: 'programasDocente',
+          attributes: ['id', 'nombre', 'periodo', 'estado', 'asignatura_id'],
+          required: false
         }
       ]
     });
@@ -256,6 +329,7 @@ exports.bulkCreate = async (req, res) => {
 
   const errors = [];
   const filePath = req.file.path;
+  const createdProfesores = [];
 
   try {
     const workbook = xlsx.readFile(filePath);
@@ -263,81 +337,220 @@ exports.bulkCreate = async (req, res) => {
     const jsonData = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
     fs.unlinkSync(filePath);
 
-    const newProfesoresData = []; // Usamos un array temporal para guardar datos extra
+    if (jsonData.length === 0) {
+      return res.status(400).json({ success: false, message: 'El archivo está vacío.' });
+    }
+
+    // Mostrar las columnas detectadas para debug
+    const columnas = Object.keys(jsonData[0] || {});
+    console.log('📋 Columnas detectadas:', columnas);
+
+    // Pre-cargar datos para lookups eficientes
+    const Asignatura = db.Asignatura;
+    const Nivel = db.Nivel;
+    const Paralelo = db.Paralelo;
+
+    const todasCarreras = await Carrera.findAll({ attributes: ['id', 'nombre'] });
+    const todasAsignaturas = await Asignatura.findAll({ attributes: ['id', 'nombre', 'codigo'] });
+    const todosNiveles = await Nivel.findAll({ attributes: ['id', 'nombre', 'codigo'] });
+    const todosParalelos = await Paralelo.findAll({ attributes: ['id', 'nombre', 'codigo'] });
+
+    // Crear mapas para búsqueda rápida (nombre en minúsculas -> objeto)
+    const carreraMap = {};
+    todasCarreras.forEach(c => { carreraMap[c.nombre.trim().toLowerCase()] = c; });
+    
+    const asignaturaMap = {};
+    todasAsignaturas.forEach(a => { 
+      asignaturaMap[a.nombre.trim().toLowerCase()] = a;
+      if (a.codigo) asignaturaMap[a.codigo.trim().toLowerCase()] = a;
+    });
+    
+    const nivelMap = {};
+    todosNiveles.forEach(n => { 
+      nivelMap[n.nombre.trim().toLowerCase()] = n;
+      if (n.codigo) nivelMap[n.codigo.trim().toLowerCase()] = n;
+    });
+    
+    const paraleloMap = {};
+    todosParalelos.forEach(p => { 
+      paraleloMap[p.nombre.trim().toLowerCase()] = p;
+      if (p.codigo) paraleloMap[p.codigo.trim().toLowerCase()] = p;
+    });
 
     for (let i = 0; i < jsonData.length; i++) {
       const row = jsonData[i];
-      const rowNumber = i + 2;
+      const rowNumber = i + 2; // +2 porque fila 1 es header
 
-      if (!row.nombres || !row.apellidos || !row.email || !row.carrera_nombre) {
-        errors.push(`Fila ${rowNumber}: Faltan datos obligatorios.`);
+      // Campos obligatorios
+      const nombres = row.nombres ? String(row.nombres).trim() : '';
+      const apellidos = row.apellidos ? String(row.apellidos).trim() : '';
+      const email = row.email ? String(row.email).trim() : '';
+      const carreraNombre = row.carrera_nombre ? String(row.carrera_nombre).trim() : '';
+
+      if (!nombres || !apellidos || !email || !carreraNombre) {
+        errors.push(`Fila ${rowNumber}: Faltan datos obligatorios (nombres, apellidos, email, carrera_nombre).`);
         continue;
       }
 
+      // Buscar carrera principal
+      const carrera = carreraMap[carreraNombre.toLowerCase()];
+      if (!carrera) {
+        errors.push(`Fila ${rowNumber}: La carrera "${carreraNombre}" no fue encontrada.`);
+        continue;
+      }
+
+      // Verificar email duplicado
+      const existente = await Profesor.findOne({ where: { email } });
+      if (existente) {
+        errors.push(`Fila ${rowNumber}: El email "${email}" ya está en uso.`);
+        continue;
+      }
+
+      // Buscar carreras adicionales (campo opcional: carreras_adicionales, separadas por ;)
+      const carrerasAdicionales = row.carreras_adicionales ? String(row.carreras_adicionales).trim() : '';
+      const carreraIds = new Set([carrera.id]);
+      if (carrerasAdicionales) {
+        carrerasAdicionales.split(';').forEach(cn => {
+          const c = carreraMap[cn.trim().toLowerCase()];
+          if (c) {
+            carreraIds.add(c.id);
+          } else if (cn.trim()) {
+            errors.push(`Fila ${rowNumber}: Carrera adicional "${cn.trim()}" no encontrada (se omite).`);
+          }
+        });
+      }
+
+      // Buscar asignaturas (campo opcional: asignaturas, separadas por ;)
+      const asignaturasStr = row.asignaturas ? String(row.asignaturas).trim() : (row.asignatura_nombre ? String(row.asignatura_nombre).trim() : '');
+      const asignaturaIds = [];
+      if (asignaturasStr) {
+        asignaturasStr.split(';').forEach(an => {
+          const a = asignaturaMap[an.trim().toLowerCase()];
+          if (a) {
+            asignaturaIds.push(a.id);
+          } else if (an.trim()) {
+            errors.push(`Fila ${rowNumber}: Asignatura "${an.trim()}" no encontrada (se omite).`);
+          }
+        });
+      }
+
+      // Buscar nivel (campo opcional)
+      let nivelId = null;
+      const nivelStr = row.nivel_nombre || row.nivel || '';
+      if (nivelStr) {
+        const nivel = nivelMap[String(nivelStr).trim().toLowerCase()];
+        if (nivel) {
+          nivelId = nivel.id;
+        } else {
+          errors.push(`Fila ${rowNumber}: Nivel "${nivelStr}" no encontrado (se omite).`);
+        }
+      }
+
+      // Buscar paralelo (campo opcional)
+      let paraleloId = null;
+      const paraleloStr = row.paralelo_nombre || row.paralelo || '';
+      if (paraleloStr) {
+        const paralelo = paraleloMap[String(paraleloStr).trim().toLowerCase()];
+        if (paralelo) {
+          paraleloId = paralelo.id;
+        } else {
+          errors.push(`Fila ${rowNumber}: Paralelo "${paraleloStr}" no encontrado (se omite).`);
+        }
+      }
+
+      // Estado activo (campo opcional, default: true)
+      let activo = true;
+      if (row.activo !== undefined && row.activo !== null) {
+        const activoStr = String(row.activo).trim().toLowerCase();
+        activo = !['false', '0', 'no', 'inactivo'].includes(activoStr);
+      }
+
       try {
-        const carrera = await Carrera.findOne({ where: { nombre: String(row.carrera_nombre).trim() } });
-        if (!carrera) {
-          errors.push(`Fila ${rowNumber}: La carrera "${row.carrera_nombre}" no fue encontrada.`);
-          continue;
-        }
-
-        const existente = await Profesor.findOne({ where: { email: String(row.email).trim() } });
-        if (existente) {
-          errors.push(`Fila ${rowNumber}: El email "${row.email}" ya está en uso.`);
-          continue;
-        }
-
-        // --- NUEVO: Generar contraseña y token para cada profesor ---
-        const tempPassword = crypto.randomBytes(8).toString('hex'); // Contraseña temporal que no se usará
+        // Generar contraseña temporal y token
+        const tempPassword = crypto.randomBytes(8).toString('hex');
         const hashedPassword = await bcrypt.hash(tempPassword, 12);
         const { resetToken, hashedToken, expirationDate } = createPasswordResetToken();
 
-        newProfesoresData.push({
-          nombres: String(row.nombres).trim(),
-          apellidos: String(row.apellidos).trim(),
-          email: String(row.email).trim(),
+        const nuevoProfesor = await Profesor.create({
+          nombres,
+          apellidos,
+          email,
           carrera_id: carrera.id,
-          activo: true,
-          // --- NUEVO: Añadir campos de seguridad ---
+          activo,
+          asignatura_id: asignaturaIds.length > 0 ? asignaturaIds[0] : null,
+          nivel_id: nivelId,
+          paralelo_id: paraleloId,
           password: hashedPassword,
           passwordResetToken: hashedToken,
-          passwordResetExpires: new Date(expirationDate),
-          // Guardamos el token sin hashear aquí temporalmente para enviarlo por correo después
-          rawResetToken: resetToken,
+          passwordResetExpires: new Date(expirationDate)
+        });
+
+        // Asignar carreras (muchos a muchos)
+        if (carreraIds.size > 0) {
+          await nuevoProfesor.setCarreras([...carreraIds]);
+        }
+
+        // Asignar asignaturas (muchos a muchos)
+        if (asignaturaIds.length > 0) {
+          await nuevoProfesor.setAsignaturas(asignaturaIds);
+        }
+
+        createdProfesores.push({
+          id: nuevoProfesor.id,
+          nombres,
+          apellidos,
+          email,
+          resetToken
         });
 
       } catch (dbError) {
-        errors.push(`Fila ${rowNumber}: Error de base de datos. ${dbError.message}`);
+        errors.push(`Fila ${rowNumber}: Error al crear profesor. ${dbError.message}`);
       }
     }
 
-    if (newProfesoresData.length > 0) {
-      // Sequelize ignora 'rawResetToken' porque no está en el modelo, lo cual es perfecto.
-      await Profesor.bulkCreate(newProfesoresData);
-
-      // --- NUEVO: Enviar correos a todos los profesores creados ---
-      for (const profData of newProfesoresData) {
-        await sendPasswordSetupEmail(profData, profData.rawResetToken);
+    // Enviar correos de bienvenida (sin bloquear la respuesta)
+    if (createdProfesores.length > 0) {
+      for (const prof of createdProfesores) {
+        try {
+          await sendPasswordSetupEmail(prof, prof.resetToken);
+        } catch (emailErr) {
+          console.error(`⚠️ Error enviando email a ${prof.email}:`, emailErr.message);
+        }
       }
     }
 
-    if (errors.length > 0) {
+    const totalFilas = jsonData.length;
+    const totalCreados = createdProfesores.length;
+    const totalErrores = errors.length;
+
+    if (totalCreados === 0 && totalErrores > 0) {
       return res.status(422).json({
         success: false,
-        message: `Proceso completado con errores. ${newProfesoresData.length} de ${jsonData.length} docentes fueron creados.`,
-        errors: errors,
+        message: `No se pudo crear ningún docente. ${totalErrores} errores encontrados.`,
+        errors,
+        summary: { total: totalFilas, creados: 0, errores: totalErrores }
       });
     }
 
-    res.status(201).json({
+    if (totalErrores > 0) {
+      return res.status(207).json({
+        success: true,
+        message: `Proceso completado: ${totalCreados} de ${totalFilas} docentes creados. ${totalErrores} errores.`,
+        errors,
+        summary: { total: totalFilas, creados: totalCreados, errores: totalErrores }
+      });
+    }
+
+    return res.status(201).json({
       success: true,
-      message: `${newProfesoresData.length} docentes fueron creados exitosamente. Se han enviado los correos de bienvenida.`,
+      message: `¡Éxito! ${totalCreados} docentes creados correctamente.`,
+      summary: { total: totalFilas, creados: totalCreados, errores: 0 }
     });
 
   } catch (error) {
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    console.error('Error al procesar el archivo Excel:', error);
-    return res.status(500).json({ success: false, message: 'Error al procesar el archivo Excel.', error: error.message });
+    console.error('Error al procesar el archivo:', error);
+    return res.status(500).json({ success: false, message: 'Error al procesar el archivo.', error: error.message });
   }
 };
 
@@ -375,6 +588,29 @@ exports.create = async (req, res) => {
       passwordResetExpires: new Date(expirationDate)
     });
 
+    // Guardar carreras adicionales en la tabla intermedia
+    const { carreras_ids, asignaturas_ids } = req.body;
+    const allCarreraIds = new Set();
+    allCarreraIds.add(parseInt(carrera, 10));
+    if (Array.isArray(carreras_ids)) {
+      carreras_ids.forEach(cid => allCarreraIds.add(parseInt(cid, 10)));
+    }
+    if (allCarreraIds.size > 0) {
+      await nuevoProfesor.setCarreras([...allCarreraIds]);
+    }
+
+    // Guardar asignaturas en la tabla intermedia
+    const allAsignaturaIds = new Set();
+    if (asignatura_id) {
+      allAsignaturaIds.add(parseInt(asignatura_id, 10));
+    }
+    if (Array.isArray(asignaturas_ids)) {
+      asignaturas_ids.forEach(aid => allAsignaturaIds.add(parseInt(aid, 10)));
+    }
+    if (allAsignaturaIds.size > 0) {
+      await nuevoProfesor.setAsignaturas([...allAsignaturaIds]);
+    }
+
     // --- NUEVO: Enviar el correo de bienvenida ---
     await sendPasswordSetupEmail(nuevoProfesor, resetToken);
     
@@ -391,7 +627,7 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombres, apellidos, email, carrera, activo, asignatura_id, nivel_id, paralelo_id } = req.body;
+    const { nombres, apellidos, email, carrera, activo, asignatura_id, nivel_id, paralelo_id, carreras_ids, asignaturas_ids } = req.body;
 
     const profesor = await Profesor.findByPk(id);
     if (!profesor) {
@@ -417,10 +653,109 @@ exports.update = async (req, res) => {
       paralelo_id: paralelo_id !== undefined ? paralelo_id : profesor.paralelo_id
     });
 
+    // Actualizar carreras adicionales si se envían
+    if (Array.isArray(carreras_ids)) {
+      const allCarreraIds = new Set(carreras_ids.map(cid => parseInt(cid, 10)));
+      // Siempre incluir la carrera principal
+      allCarreraIds.add(carrera ? parseInt(carrera, 10) : profesor.carrera_id);
+      await profesor.setCarreras([...allCarreraIds]);
+    }
+
+    // Actualizar asignaturas si se envían
+    if (Array.isArray(asignaturas_ids)) {
+      const allAsignaturaIds = new Set(asignaturas_ids.map(aid => parseInt(aid, 10)));
+      // Incluir la asignatura principal si existe
+      const mainAsigId = asignatura_id !== undefined ? asignatura_id : profesor.asignatura_id;
+      if (mainAsigId) {
+        allAsignaturaIds.add(parseInt(mainAsigId, 10));
+      }
+      await profesor.setAsignaturas([...allAsignaturaIds]);
+    }
+
     return res.status(200).json({ success: true, message: 'Profesor actualizado exitosamente', data: profesor });
   } catch (error) {
     console.error('Error al actualizar profesor:', error);
     return res.status(500).json({ success: false, message: 'Error al actualizar el profesor', error: error.message });
+  }
+};
+
+// --- OBTENER DOCUMENTOS DE UN PROFESOR (Malla, PA, Syllabus) ---
+exports.getDocumentos = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const profesor = await Profesor.findByPk(id, {
+      include: [
+        {
+          model: Carrera,
+          as: 'carrera',
+          attributes: ['id', 'nombre'],
+          include: [
+            {
+              model: Facultad,
+              as: 'facultad',
+              attributes: ['id', 'nombre']
+            },
+            {
+              model: db.Malla,
+              as: 'mallas',
+              attributes: ['id', 'codigo_malla']
+            }
+          ]
+        },
+        {
+          model: db.Asignatura,
+          as: 'asignatura',
+          attributes: ['id', 'nombre', 'codigo'],
+          include: [
+            {
+              model: db.ProgramasAnaliticos,
+              as: 'programasAnaliticos',
+              attributes: ['id', 'nombre', 'periodo', 'createdAt']
+            },
+            {
+              model: db.Syllabus,
+              as: 'syllabi',
+              attributes: ['id', 'nombre', 'periodo', 'createdAt']
+            },
+            {
+              model: db.SyllabusComisionAcademica,
+              as: 'syllabusComision',
+              attributes: ['id', 'nombre', 'periodo', 'estado']
+            }
+          ]
+        },
+        {
+          model: db.Nivel,
+          as: 'nivel',
+          attributes: ['id', 'nombre']
+        },
+        {
+          model: db.Paralelo,
+          as: 'paralelo',
+          attributes: ['id', 'nombre']
+        },
+        {
+          model: db.SyllabusDocente,
+          as: 'syllabusDocente',
+          attributes: ['id', 'nombre', 'periodo', 'estado', 'asignatura_id', 'createdAt']
+        },
+        {
+          model: db.ProgramaAnaliticoDocente,
+          as: 'programasDocente',
+          attributes: ['id', 'nombre', 'periodo', 'estado', 'asignatura_id', 'createdAt']
+        }
+      ]
+    });
+
+    if (!profesor) {
+      return res.status(404).json({ success: false, message: 'Profesor no encontrado' });
+    }
+
+    return res.status(200).json({ success: true, data: profesor });
+  } catch (error) {
+    console.error('Error al obtener documentos del profesor:', error);
+    return res.status(500).json({ success: false, message: 'Error al obtener documentos', error: error.message });
   }
 };
 

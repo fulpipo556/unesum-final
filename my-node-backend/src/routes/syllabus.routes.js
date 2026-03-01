@@ -45,15 +45,15 @@ router.get('/mine', authorize(['profesor', 'administrador']), syllabusController
 // GET /api/syllabi -> Obtener TODOS los syllabi.
 // Esta es una función de administrador y comisión académica.
 // PERMITIDO PARA: 'administrador' y 'comision_academica'.
-router.get('/', authorize(['administrador', 'comision_academica']), syllabusController.getAll);
+router.get('/', authorize(['administrador', 'comision_academica', 'comision']), syllabusController.getAll);
 
 // POST /api/syllabi -> Crear un nuevo syllabus.
 // PERMITIDO PARA: Ambos roles, profesores, comisión académica y administradores.
-router.post('/', authorize(['profesor', 'administrador', 'comision_academica']), syllabusController.create);
+router.post('/', authorize(['profesor', 'administrador', 'comision_academica', 'comision']), syllabusController.create);
 
 // GET /api/syllabi/:id -> Obtener un syllabus específico por su ID.
 // PERMITIDO PARA: Todos los roles (un profesor o comisión podría necesitar ver un syllabus específico).
-router.get('/:id', authorize(['profesor', 'administrador', 'comision_academica']), syllabusController.getById);
+router.get('/:id', authorize(['profesor', 'administrador', 'comision_academica', 'comision']), syllabusController.getById);
 
 // PUT /api/syllabi/:id -> Actualizar un syllabus existente.
 // PERMITIDO PARA: Todos los roles. La lógica de "quién es el dueño" está dentro del controlador.

@@ -36,7 +36,7 @@ interface TableCell {
 interface TableRow { id: string; cells: TableCell[]; }
 interface TabData { id: string; title: string; rows: TableRow[]; }
 interface ProgramaAnaliticoData { id: string | number; name: string; description: string; tabs: TabData[]; metadata: { subject?: string; period?: string; level?: string; createdAt: string; updatedAt: string; }; }
-interface SavedProgramaAnaliticoRecord { id: number; nombre: string; periodo: string; materias: string; datos_programa: ProgramaAnaliticoData; created_at: string; updated_at: string; }
+interface SavedProgramaAnaliticoRecord { id: number; nombre: string; periodo: string; materias: string; datos_tabla: ProgramaAnaliticoData; created_at: string; updated_at: string; }
 
 export default function EditorProgramaAnaliticoComisionPage() {
   const { token, getToken } = useAuth()
@@ -114,7 +114,7 @@ export default function EditorProgramaAnaliticoComisionPage() {
     if (match) {
       console.log('➡️ Cargando programa desde query params:', match.id)
       // preparar la UI data y setActive
-      const programaToLoad = (match as any).datos_programa || (match as any).datos_tabla || null
+      const programaToLoad = (match as any).datos_tabla || (match as any).datos_programa || null
       if (programaToLoad) {
         const uiData = typeof programaToLoad === 'string' ? JSON.parse(programaToLoad) : programaToLoad
         setProgramas([uiData])
@@ -183,7 +183,7 @@ export default function EditorProgramaAnaliticoComisionPage() {
         nombre: activePrograma.name || 'Programa Analítico',
         periodo: selectedPeriod,
         materias: activePrograma.name || 'Programa Analítico',
-        datos_programa: datosParaGuardar
+        datos_tabla: datosParaGuardar
       }
       
       const isUpdate = typeof activePrograma.id === "number"
@@ -193,7 +193,7 @@ export default function EditorProgramaAnaliticoComisionPage() {
       const result = await apiRequest(endpoint, { method, body: JSON.stringify(payload) })
       const savedRecord = result.data as SavedProgramaAnaliticoRecord;
       
-      const savedUIData = savedRecord.datos_programa;
+      const savedUIData = savedRecord.datos_tabla || (savedRecord as any).datos_programa;
       savedUIData.id = savedRecord.id;
       
       if (savedUIData.tabs) {
@@ -258,17 +258,60 @@ export default function EditorProgramaAnaliticoComisionPage() {
     
     if (programaToLoad) {
       console.log("✅ Cargando programa:", programaToLoad.nombre);
-      const editorData = programaToLoad.datos_programa;
-      editorData.id = programaToLoad.id;
-      if (!editorData.tabs || editorData.tabs.length === 0) {
-         editorData.tabs = [{ id: `tab-${Date.now()}`, title: "General", rows: (editorData as any).rows || [] }];
+      let rawData = (programaToLoad as any).datos_tabla || (programaToLoad as any).datos_programa;
+      if (typeof rawData === 'string') {
+        try { rawData = JSON.parse(rawData); } catch (e) { console.error("Error parsing datos_tabla:", e); }
       }
+      
+      if (!rawData || typeof rawData !== 'object') {
+        console.error("❌ datos_tabla está vacío o no es un objeto");
+        alert("El programa seleccionado no tiene datos válidos.");
+        return;
+      }
+      
+      const editorData = { ...rawData } as ProgramaAnaliticoData;
+      editorData.id = programaToLoad.id;
+      
+      // Convertir formato secciones antiguo a formato tabs si es necesario
+      if (!editorData.tabs || editorData.tabs.length === 0) {
+        if ((rawData as any).secciones && Array.isArray((rawData as any).secciones)) {
+          console.log("🔄 Convirtiendo formato secciones a tabs...");
+          editorData.tabs = (rawData as any).secciones.map((sec: any, idx: number) => ({
+            id: `tab-sec-${idx}-${Date.now()}`,
+            title: sec.titulo || sec.nombre || `Sección ${idx + 1}`,
+            rows: Array.isArray(sec.datos) ? sec.datos.map((fila: any, rIdx: number) => ({
+              id: `row-${idx}-${rIdx}-${Date.now()}`,
+              cells: (Array.isArray(fila) ? fila : [fila]).map((celda: any, cIdx: number) => ({
+                id: `cell-${idx}-${rIdx}-${cIdx}-${Date.now()}`,
+                content: typeof celda === 'string' ? celda : (celda?.contenido || celda?.content || JSON.stringify(celda) || ''),
+                isHeader: rIdx === 0,
+                rowSpan: 1,
+                colSpan: 1,
+                isEditable: true,
+                textOrientation: 'horizontal' as const
+              }))
+            })) : []
+          }));
+        } else if ((rawData as any).rows && Array.isArray((rawData as any).rows)) {
+          editorData.tabs = [{ id: `tab-${Date.now()}`, title: "General", rows: (rawData as any).rows }];
+        } else {
+          editorData.tabs = [{ id: `tab-${Date.now()}`, title: "General", rows: [] }];
+        }
+      }
+      
+      if (!editorData.metadata) {
+        editorData.metadata = { createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      }
+      if (!editorData.name) {
+        editorData.name = programaToLoad.nombre || 'Programa Analítico';
+      }
+      
       setProgramas([editorData]);
       setActiveProgramaId(editorData.id);
       setActiveTabId(editorData.tabs[0]?.id || null);
       
-      setSelectedPeriod(programaToLoad.periodo);
-      console.log("✅ Programa cargado exitosamente, periodo:", programaToLoad.periodo);
+      setSelectedPeriod(programaToLoad.periodo || '');
+      console.log("✅ Programa cargado exitosamente, periodo:", programaToLoad.periodo, "tabs:", editorData.tabs.length);
     } else {
       console.error("❌ No se encontró el programa con ID:", id);
       console.log("📋 IDs disponibles:", savedProgramas.map(s => s.id));
@@ -537,7 +580,7 @@ export default function EditorProgramaAnaliticoComisionPage() {
     if (!programaToClone) return;
     
     try {
-      const clonedData = JSON.parse(JSON.stringify(programaToClone.datos_programa));
+      const clonedData = JSON.parse(JSON.stringify(programaToClone.datos_tabla || (programaToClone as any).datos_programa));
       clonedData.id = `programa-${Date.now()}`;
       clonedData.name = `${programaToClone.nombre} (Copia)`;
       clonedData.metadata.createdAt = new Date().toISOString();
@@ -547,7 +590,7 @@ export default function EditorProgramaAnaliticoComisionPage() {
         nombre: clonedData.name,
         periodo: programaToClone.periodo,
         materias: programaToClone.materias,
-        datos_programa: clonedData
+        datos_tabla: clonedData
       };
       
       const result = await apiRequest('/api/programas-analiticos', { method: 'POST', body: JSON.stringify(payload) });
@@ -592,7 +635,7 @@ export default function EditorProgramaAnaliticoComisionPage() {
   };
 
   const programasFiltered = selectedPeriod 
-    ? savedProgramas.filter(s => s.periodo === selectedPeriod)
+    ? savedProgramas.filter(s => s.periodo === selectedPeriod || !s.periodo)
     : savedProgramas;
   
   return (

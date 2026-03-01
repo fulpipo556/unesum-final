@@ -11,7 +11,13 @@ import { Label } from "@/components/ui/label"
 import { useAuth } from "@/contexts/auth-context"
 import { MainHeader } from "@/components/layout/main-header"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Eye, EyeOff } from "lucide-react"
+import { Eye, EyeOff, Shield, GraduationCap, BookOpen, Users } from "lucide-react"
+
+interface RoleOption {
+  rol: string;
+  nombre: string;
+  descripcion: string;
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -19,9 +25,27 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+  const [showRoleSelector, setShowRoleSelector] = useState(false)
+  const [availableRoles, setAvailableRoles] = useState<RoleOption[]>([])
 
   const { login } = useAuth()
   const router = useRouter()
+
+  const roleIcons: Record<string, any> = {
+    'administrador': Shield,
+    'comision_academica': Users,
+    'comision': Users,
+    'profesor': GraduationCap,
+    'docente': GraduationCap,
+  }
+
+  const roleColors: Record<string, string> = {
+    'administrador': 'bg-red-500',
+    'comision_academica': 'bg-blue-500',
+    'comision': 'bg-blue-500',
+    'profesor': 'bg-emerald-500',
+    'docente': 'bg-emerald-500',
+  }
 
 const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,39 +53,20 @@ const handleSubmit = async (e: React.FormEvent) => {
     setError("");
   
     try {
-      // 1. Llama a la función de login.
-      const success = await login(email, password);
+      const result = await login(email, password);
       
-      if (success) {
-        // --- ¡LA LÓGICA DE REDIRECCIÓN SEPARADA! ---
-
-        // 2. Después de un login exitoso, el AuthContext ha guardado
-        //    los datos del usuario. Los leemos directamente del localStorage
-        //    para obtener la información más actualizada.
-        const userData = JSON.parse(localStorage.getItem('user_data') || '{}');
-        
-        console.log('🔍 DEBUG - Usuario después del login:', userData);
-        console.log('🔍 DEBUG - Rol detectado:', userData.rol);
-
-        // 3. Comparamos el rol y redirigimos a la ruta SEPARADA.
-        if (userData.rol === 'administrador') {
-          console.log('➡️ Redirigiendo a: /dashboard/admin');
-          router.push('/dashboard/admin');
-        } else if (userData.rol === 'profesor' || userData.rol === 'docente') {
-          console.log('➡️ Redirigiendo a: /dashboard/docente');
-          router.push('/dashboard/docente');
-        } else if (userData.rol === 'comision' || userData.rol === 'comision_academica') {
-          console.log('➡️ Redirigiendo a: /dashboard/comision');
-          router.push('/dashboard/comision');
-        } else {
-          console.log('❌ Rol no reconocido:', userData.rol);
-          setError("Rol de usuario no reconocido. Contacte al soporte.");
-          setIsLoading(false);
-          return;
-        }
-        
+      if (result === 'multiple_roles') {
+        // El backend indicó múltiples roles — mostrar selector
+        const rolesData = JSON.parse(localStorage.getItem('pending_roles') || '[]');
+        setAvailableRoles(rolesData);
+        setShowRoleSelector(true);
+        setIsLoading(false);
+        return;
+      }
+      
+      if (result === true || result === 'success') {
+        redirectByRole();
       } else {
-        // Si login() devuelve false, las credenciales son incorrectas.
         setError("Credenciales inválidas. Verifica tu email y contraseña.");
         setIsLoading(false);
       }
@@ -71,12 +76,110 @@ const handleSubmit = async (e: React.FormEvent) => {
       setIsLoading(false);
     }
   };
+
+  const handleRoleSelect = async (selectedRole: string) => {
+    setIsLoading(true);
+    setError("");
+    try {
+      const result = await login(email, password, selectedRole);
+      if (result === true || result === 'success') {
+        redirectByRole();
+      } else {
+        setError("Error al seleccionar rol. Intente nuevamente.");
+        setIsLoading(false);
+      }
+    } catch (error) {
+      console.error('Error al seleccionar rol:', error);
+      setError("Error al iniciar sesión con el rol seleccionado.");
+      setIsLoading(false);
+    }
+  };
+
+  const redirectByRole = () => {
+    const userData = JSON.parse(localStorage.getItem('user_data') || '{}');
+    
+    console.log('DEBUG - Usuario después del login:', userData);
+    console.log('DEBUG - Rol detectado:', userData.rol);
+
+    if (userData.rol === 'administrador') {
+      router.push('/dashboard/admin');
+    } else if (userData.rol === 'profesor' || userData.rol === 'docente') {
+      router.push('/dashboard/docente');
+    } else if (userData.rol === 'comision' || userData.rol === 'comision_academica') {
+      router.push('/dashboard/comision');
+    } else {
+      setError("Rol de usuario no reconocido. Contacte al soporte.");
+      setIsLoading(false);
+    }
+  };
   const demoUsers = [
     { email: "admin@unesum.edu.ec", password: "admin123", role: "Administrador" },
     { email: "docente@unesum.edu.ec", password: "docente123", role: "Docente" },
   { email: "decano@unesum.edu.ec", password: "decano123", role: "Decano" },
   { email: "comision@unesum.edu.ec", password: "comision123", role: "Comisión Académica" },
   ]
+
+  // --- SELECTOR DE ROL ---
+  if (showRoleSelector && availableRoles.length > 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-green-100">
+        <MainHeader />
+        <main className="flex items-center justify-center px-6 py-20">
+          <Card className="w-full max-w-lg">
+            <CardHeader className="text-center">
+              <CardTitle className="text-2xl font-bold text-emerald-700">Seleccionar Rol</CardTitle>
+              <CardDescription>
+                Tu cuenta tiene múltiples roles. Selecciona con cuál deseas ingresar.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {availableRoles.map((role, index) => {
+                const IconComponent = roleIcons[role.rol] || BookOpen;
+                const bgColor = roleColors[role.rol] || 'bg-gray-500';
+                return (
+                  <button
+                    key={index}
+                    onClick={() => handleRoleSelect(role.rol)}
+                    disabled={isLoading}
+                    className="w-full flex items-center gap-4 p-4 border-2 rounded-xl hover:border-emerald-500 hover:bg-emerald-50 transition-all duration-200 text-left disabled:opacity-50"
+                  >
+                    <div className={`p-3 rounded-lg ${bgColor} text-white`}>
+                      <IconComponent className="h-6 w-6" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900">{role.descripcion}</h3>
+                      <p className="text-sm text-gray-500">Rol: {role.rol}</p>
+                    </div>
+                    <div className="text-emerald-600 font-medium text-sm">
+                      Ingresar →
+                    </div>
+                  </button>
+                );
+              })}
+              
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              <Button
+                variant="outline"
+                className="w-full mt-4"
+                onClick={() => {
+                  setShowRoleSelector(false);
+                  setAvailableRoles([]);
+                  setError("");
+                }}
+              >
+                ← Volver al login
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-green-100">

@@ -29,7 +29,7 @@ interface AuthState {
 }
 
 interface AuthContextType extends AuthState {
-  login: (email: string, password: string) => Promise<boolean>
+  login: (email: string, password: string, rolSeleccionado?: string) => Promise<boolean | string>
   register: (userData: Omit<User, 'id'>) => Promise<{ success: boolean; error?: string }>
   logout: () => void
   clearError: () => void
@@ -226,39 +226,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Si necesitas verificar con el backend, hazlo solo manualmente cuando sea necesario
   }
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (email: string, password: string, rolSeleccionado?: string): Promise<boolean | string> => {
     setState(prev => ({ ...prev, isLoading: true, error: null }))
     try {
-      console.log('🔐 Intentando login para:', email)
+      console.log('Intentando login para:', email, rolSeleccionado ? `con rol: ${rolSeleccionado}` : '')
       
-      // La URL '/auth/login' ya es la correcta para nuestro backend unificado.
       const response = await axios.post(`${API_URL}/auth/login`, {
-        // Los nombres deben coincidir con lo que espera el backend
         correo_electronico: email,
-        contraseña: password
+        contraseña: password,
+        rol_seleccionado: rolSeleccionado || undefined
       })
       
-      console.log('📥 Respuesta del backend:', response.data.success ? 'exitosa' : 'fallida')
-      
       if (response.data.success) {
-        // El backend devuelve 'user', lo cual ya coincide con tu código. ¡Perfecto!
+        // Verificar si el backend pide selección de rol
+        if (response.data.multipleRoles) {
+          console.log('Múltiples roles detectados:', response.data.roles)
+          localStorage.setItem('pending_roles', JSON.stringify(response.data.roles))
+          setState(prev => ({ ...prev, isLoading: false }))
+          return 'multiple_roles'
+        }
+
         const { token, user } = response.data
         
-        console.log('💾 Guardando datos en localStorage:', {
+        console.log('Guardando datos en localStorage:', {
           rol: user.rol,
-          email: user.correo_electronico
+          email: user.correo_electronico || user.email
         })
         
         localStorage.setItem('token', token)
         localStorage.setItem('token_time', Date.now().toString())
         localStorage.setItem('user_data', JSON.stringify(user))
+        localStorage.removeItem('pending_roles')
         
         setState(prev => ({ ...prev, user, token, isLoading: false }))
         
-        console.log('✅ Login exitoso')
         return true
       } else {
-        console.log('❌ Login fallido:', response.data.message)
         setState(prev => ({ 
           ...prev, 
           error: response.data.message || 'Error de inicio de sesión',
@@ -267,7 +270,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return false
       }
     } catch (error) {
-      console.error('❌ Error en login:', error)
+      console.error('Error en login:', error)
       const axiosError = error as AxiosError<{ message: string }>
       setState(prev => ({ 
         ...prev, 

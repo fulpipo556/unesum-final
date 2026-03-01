@@ -69,7 +69,7 @@ exports.getById = async (req, res) => {
 exports.create = async (req, res) => {
   try {
     // Los datos de la tabla vienen en 'datos_tabla'
-    const { nombre, datos_tabla } = req.body;
+    const { nombre, datos_tabla, periodo, materias, asignatura_id } = req.body;
     
     // El ID del usuario viene del token de autenticación (middleware)
     const usuario_id = req.user.id; 
@@ -84,6 +84,9 @@ exports.create = async (req, res) => {
     const nuevoPrograma = await ProgramaAnalitico.create({
       nombre,
       datos_tabla, // Aquí se guarda el objeto JSONB completo
+      periodo: periodo || null,
+      materias: materias || nombre,
+      asignatura_id: asignatura_id || null,
       usuario_id
     });
     
@@ -106,7 +109,7 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, datos_tabla } = req.body;
+    const { nombre, datos_tabla, periodo, materias } = req.body;
     const userId = req.user.id; // ID del usuario que hace la petición
     
     const programa = await ProgramaAnalitico.findByPk(id);
@@ -127,7 +130,9 @@ exports.update = async (req, res) => {
     // Actualizar los campos
     await programa.update({
       nombre: nombre || programa.nombre,
-      datos_tabla: datos_tabla || programa.datos_tabla
+      datos_tabla: datos_tabla || programa.datos_tabla,
+      periodo: periodo || programa.periodo,
+      materias: materias || programa.materias
     });
     
     return res.status(200).json({

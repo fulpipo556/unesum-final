@@ -3438,25 +3438,16 @@ exports.create = async (req, res) => {
     // SOLO validar duplicados si hay asignatura_id (creado desde gestión de asignaturas)
     if (asignatura_id) {
       const whereValidacion = {
-        usuario_id: usuario_id,
         periodo: periodo,
-        asignatura_id: asignatura_id,
-        es_eliminado: false
+        asignatura_id: asignatura_id
       };
 
       const programaExistente = await ProgramaAnalitico.findOne({
-        where: whereValidacion,
-        include: [{
-          model: db.Asignatura,
-          as: 'asignatura',
-          attributes: ['id', 'nombre', 'codigo']
-        }]
+        where: whereValidacion
       });
 
       if (programaExistente) {
-        const nombreMateria = programaExistente.asignatura 
-          ? programaExistente.asignatura.nombre 
-          : (programaExistente.materias || nombre);
+        const nombreMateria = programaExistente.materias || nombre;
         
         return res.status(409).json({
           success: false,
@@ -3615,8 +3606,9 @@ exports.update = async (req, res) => {
       });
     }
 
-    // ¡VERIFICACIÓN DE PERMISOS! Solo el creador o un admin puede editar.
-    if (programa.usuario_id !== userId && userRol !== 'administrador') {
+    // ¡VERIFICACIÓN DE PERMISOS! El creador, admin o comisión académica puede editar.
+    const rolesPermitidos = ['administrador', 'comision_academica', 'comision'];
+    if (programa.usuario_id !== userId && !rolesPermitidos.includes(userRol)) {
         return res.status(403).json({ 
           success: false, 
           message: 'No tienes permiso para editar este programa analítico.' 

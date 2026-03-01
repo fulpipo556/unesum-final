@@ -27,10 +27,9 @@ exports.create = async (req, res) => {
     // SOLO validar duplicados si hay asignatura_id (creado desde gestión de asignaturas)
     if (asignatura_id) {
       const whereValidacion = {
-        usuario_id: usuario_id,
         periodo: periodo,
-        asignatura_id: asignatura_id,
-        es_eliminado: false // Solo considerar los NO eliminados
+        asignatura_id: asignatura_id
+        // paranoid:true filtra automáticamente los eliminados (deletedAt IS NULL)
       };
 
       const syllabusExistente = await Syllabus.findOne({
@@ -242,11 +241,9 @@ exports.verificarExistencia = async (req, res) => {
       });
     }
 
-    // Construir condición WHERE similar a create
+    // Construir condición WHERE - paranoid:true ya filtra los eliminados automáticamente
     const whereCondicion = {
-      usuario_id: usuario_id,
-      periodo: periodo,
-      es_eliminado: false
+      periodo: periodo
     };
 
     if (asignatura_id) {
@@ -255,10 +252,56 @@ exports.verificarExistencia = async (req, res) => {
       whereCondicion.materias = materia;
     }
 
-    const syllabusExistente = await Syllabus.findOne({
+    let syllabusExistente = await Syllabus.findOne({
       where: whereCondicion,
-      attributes: ['id', 'nombre', 'materias', 'asignatura_id', 'created_at', 'updated_at']
+      attributes: ['id', 'nombre', 'materias', 'asignatura_id', 'createdAt', 'updatedAt']
     });
+
+    // Si no se encontró con asignatura_id, intentar buscar por nombre de materia
+    // (el admin puede haber subido sin asignatura_id vinculado)
+    if (!syllabusExistente && asignatura_id && materia) {
+      console.log('🔄 No encontrado por asignatura_id, buscando por nombre de materia:', materia);
+      const { Op } = require('sequelize');
+      syllabusExistente = await Syllabus.findOne({
+        where: {
+          periodo: periodo,
+          materias: { [Op.iLike]: `%${materia}%` }
+        },
+        attributes: ['id', 'nombre', 'materias', 'asignatura_id', 'createdAt', 'updatedAt']
+      });
+    }
+    
+    // Último intento: buscar solo por nombre de la materia si se proporcionó asignatura_id
+    // y podemos resolverlo a un nombre
+    if (!syllabusExistente && asignatura_id && !materia) {
+      try {
+        const asigRecord = await db.Asignatura.findByPk(asignatura_id, { attributes: ['nombre'] });
+        if (asigRecord && asigRecord.nombre) {
+          console.log('🔄 Buscando por nombre de asignatura resuelto:', asigRecord.nombre);
+          const { Op } = require('sequelize');
+          syllabusExistente = await Syllabus.findOne({
+            where: {
+              periodo: periodo,
+              materias: { [Op.iLike]: `%${asigRecord.nombre}%` }
+            },
+            attributes: ['id', 'nombre', 'materias', 'asignatura_id', 'createdAt', 'updatedAt']
+          });
+        }
+      } catch(e) { console.log('⚠️ Error resolviendo nombre de asignatura:', e.message); }
+    }
+
+    // Último fallback: buscar CUALQUIER syllabus del periodo (admin subió sin materia ni asignatura_id)
+    if (!syllabusExistente) {
+      console.log('🔄 Último fallback: buscando cualquier syllabus del periodo:', periodo);
+      syllabusExistente = await Syllabus.findOne({
+        where: { periodo: periodo },
+        attributes: ['id', 'nombre', 'materias', 'asignatura_id', 'createdAt', 'updatedAt'],
+        order: [['createdAt', 'DESC']]
+      });
+      if (syllabusExistente) {
+        console.log('✅ Encontrado syllabus genérico del periodo:', syllabusExistente.id);
+      }
+    }
 
     if (syllabusExistente) {
       // Obtener nombre de asignatura si existe asignatura_id
@@ -287,8 +330,8 @@ exports.verificarExistencia = async (req, res) => {
           materia: nombreMateria,
           asignatura_id: syllabusExistente.asignatura_id,
           asignatura: syllabusExistente.asignatura,
-          fecha_creacion: syllabusExistente.created_at,
-          fecha_actualizacion: syllabusExistente.updated_at
+          fecha_creacion: syllabusExistente.createdAt,
+          fecha_actualizacion: syllabusExistente.updatedAt
         }
       });
     }
@@ -1552,19 +1595,41 @@ exports.extractWordTables = async (req, res) => {
     const html = htmlResult.value;
 
     // 2) Parsear tablas con cheerio
+    // 2) Parsear tablas con cheerio (SOPORTE PARA ROWSPAN Y COLSPAN)
     const $ = cheerio.load(html);
     const rawTables = [];
     const flatHeaders = [];
 
     $('table').each((tIdx, table) => {
-      const tableRows = [];
+      const grid = [];
+      
       $(table).find('tr').each((rIdx, tr) => {
-        const rowCells = [];
-        $(tr).find('td, th').each((cIdx, td) => {
-          rowCells.push(($(td).text() || '').replace(/\s+/g, ' ').trim());
+        if (!grid[rIdx]) grid[rIdx] = [];
+        let cIdx = 0;
+        
+        $(tr).find('td, th').each((_, td) => {
+          // Buscar la siguiente columna disponible en esta fila
+          while (grid[rIdx][cIdx] !== undefined) {
+            cIdx++;
+          }
+          
+          const $td = $(td);
+          const text = ($td.text() || '').replace(/\s+/g, ' ').trim();
+          const rowSpan = parseInt($td.attr('rowspan') || '1', 10) || 1;
+          const colSpan = parseInt($td.attr('colspan') || '1', 10) || 1;
+          
+          // Llenar la matriz virtual
+          for (let r = 0; r < rowSpan; r++) {
+            for (let c = 0; c < colSpan; c++) {
+              if (!grid[rIdx + r]) grid[rIdx + r] = [];
+              grid[rIdx + r][cIdx + c] = (r === 0 && c === 0) ? text : "";
+            }
+          }
         });
-        if (rowCells.length > 0) tableRows.push(rowCells);
       });
+
+      // Limpiar y guardar la tabla
+      const tableRows = grid.filter(row => row && row.length > 0);
       if (tableRows.length > 0) {
         rawTables.push(tableRows);
         // Los headers son la primera fila de la tabla

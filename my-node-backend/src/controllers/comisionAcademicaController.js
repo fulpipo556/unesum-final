@@ -2,11 +2,95 @@
 // Controlador para la Comisión Académica
 
 const db = require('../models');
+const { Op } = require('sequelize');
+
+// Helper: verificar documentos existentes para un listado de asignaturas en un periodo
+async function verificarDocumentosPorPeriodo(asignaturas, periodoId) {
+  if (!periodoId || !asignaturas.length) return asignaturas;
+  
+  const asignaturaIds = asignaturas.map(a => a.id);
+  
+  // Resolver nombre del periodo para buscar por AMBOS formatos (ID y nombre)
+  // Algunos registros guardaron el nombre, otros el ID
+  const periodoStr = periodoId.toString();
+  let periodoValues = [periodoStr];
+  try {
+    const periodoRecord = await db.Periodo.findByPk(parseInt(periodoStr));
+    if (periodoRecord && periodoRecord.nombre) {
+      periodoValues.push(periodoRecord.nombre);
+    }
+  } catch(e) { /* si falla, solo busca por ID */ }
+  
+  console.log('🔍 verificarDocumentosPorPeriodo:', {
+    periodoId,
+    periodoValues,
+    totalAsignaturas: asignaturaIds.length,
+    primerosIds: asignaturaIds.slice(0, 5)
+  });
+  
+  const periodoWhere = { [Op.in]: periodoValues };
+  
+  // Buscar syllabi en tabla general (Syllabus) — paranoid:true filtra deletedAt
+  const syllabiExistentes = await db.Syllabus.findAll({
+    where: {
+      asignatura_id: { [Op.in]: asignaturaIds },
+      periodo: periodoWhere
+    },
+    attributes: ['id', 'asignatura_id'],
+    raw: true
+  });
+  
+  // Buscar syllabi en tabla de comisión académica
+  const syllabiComision = await db.SyllabusComisionAcademica.findAll({
+    where: {
+      asignatura_id: { [Op.in]: asignaturaIds },
+      periodo: periodoWhere
+    },
+    attributes: ['id', 'asignatura_id'],
+    raw: true
+  });
+  
+  // Buscar programas analíticos existentes (no tiene paranoid/soft-delete)
+  const programasExistentes = await db.ProgramasAnaliticos.findAll({
+    where: {
+      asignatura_id: { [Op.in]: asignaturaIds },
+      periodo: periodoWhere
+    },
+    attributes: ['id', 'asignatura_id'],
+    raw: true
+  });
+  
+  console.log('📊 Resultados verificación:', {
+    syllabiGeneral: syllabiExistentes.length,
+    syllabiComision: syllabiComision.length,
+    programas: programasExistentes.length
+  });
+  
+  // Crear mapas de lookup — comisión tiene prioridad sobre la tabla general
+  const syllabiMap = {};
+  const syllabiSourceMap = {};
+  syllabiExistentes.forEach(s => { syllabiMap[s.asignatura_id] = s.id; syllabiSourceMap[s.asignatura_id] = 'general'; });
+  syllabiComision.forEach(s => { syllabiMap[s.asignatura_id] = s.id; syllabiSourceMap[s.asignatura_id] = 'comision'; }); // sobrescribe si hay en ambas
+  
+  const programasMap = {};
+  programasExistentes.forEach(p => { programasMap[p.asignatura_id] = p.id; });
+  
+  // Enriquecer asignaturas con estado real
+  return asignaturas.map(asig => ({
+    ...asig,
+    tiene_syllabus: !!syllabiMap[asig.id],
+    syllabus_id: syllabiMap[asig.id] || null,
+    syllabus_source: syllabiSourceMap[asig.id] || null,
+    tiene_programa: !!programasMap[asig.id],
+    programa_id: programasMap[asig.id] || null
+  }));
+}
 
 // 🏫 OBTENER ESTRUCTURA COMPLETA DE LA FACULTAD O CARRERA ESPECÍFICA
 exports.obtenerEstructuraFacultad = async (req, res) => {
   try {
     const user = req.user;
+    const periodoId = req.query.periodo || null; // Periodo para verificar documentos
     
     console.log('👤 Usuario:', {
       id: user.id,
@@ -17,6 +101,31 @@ exports.obtenerEstructuraFacultad = async (req, res) => {
       carrera_id: user.carrera_id
     });
     
+    // CASO 1b: Si no tiene carrera_id pero sí tiene carrera (texto), buscar por nombre
+    if (!user.carrera_id && user.carrera) {
+      const carreraNombre = (user.carrera || '').trim();
+      console.log(`🔍 CASO 1b: Buscando carrera por nombre: "${carreraNombre}"`);
+      const { Op } = require('sequelize');
+      // 1) Buscar coincidencia exacta insensible a mayúsculas
+      let carreraByName = await db.Carrera.findOne({
+        where: { nombre: { [Op.iLike]: carreraNombre } }
+      });
+      // 2) Si no encuentra, buscar por LIKE parcial (contiene el texto)
+      if (!carreraByName) {
+        carreraByName = await db.Carrera.findOne({
+          where: { nombre: { [Op.iLike]: `%${carreraNombre}%` } }
+        });
+      }
+      if (carreraByName) {
+        user.carrera_id = carreraByName.id;
+        console.log(`✅ Carrera encontrada por nombre: "${carreraByName.nombre}", id: ${user.carrera_id}`);
+      } else {
+        // Mostrar todas las carreras disponibles para diagnóstico
+        const todasCarreras = await db.Carrera.findAll({ attributes: ['id', 'nombre'] });
+        console.log(`⚠️ No se encontró carrera con nombre "${carreraNombre}". Disponibles:`, todasCarreras.map(c => c.nombre));
+      }
+    }
+
     // CASO 1: Si el usuario tiene carrera_id asignada, mostrar SOLO esa carrera
     if (user.carrera_id) {
       console.log(`🎓 ✅ CASO 1: Usuario tiene carrera_id asignada: ${user.carrera_id}`);
@@ -55,6 +164,21 @@ exports.obtenerEstructuraFacultad = async (req, res) => {
         });
       }
       
+      const asignaturasBase = (carrera.asignaturas || []).map(asig => ({
+        id: asig.id,
+        nombre: asig.nombre,
+        codigo: asig.codigo,
+        nivel: asig.nivel ? asig.nivel.nombre : 'Sin nivel',
+        estado: asig.estado,
+        tiene_syllabus: false,
+        syllabus_id: null,
+        tiene_programa: false,
+        programa_id: null
+      }));
+      
+      // Verificar documentos reales si hay periodo
+      const asignaturasConEstado = await verificarDocumentosPorPeriodo(asignaturasBase, periodoId);
+      
       const estructura = {
         facultad: {
           id: carrera.facultad.id,
@@ -64,17 +188,7 @@ exports.obtenerEstructuraFacultad = async (req, res) => {
           id: carrera.id,
           nombre: carrera.nombre,
           mallas: carrera.mallas || [],
-          asignaturas: (carrera.asignaturas || []).map(asig => ({
-            id: asig.id,
-            nombre: asig.nombre,
-            codigo: asig.codigo,
-            nivel: asig.nivel ? asig.nivel.nombre : 'Sin nivel',
-            estado: asig.estado,
-            tiene_syllabus: false,
-            syllabus_id: null,
-            tiene_programa: false,
-            programa_id: null
-          }))
+          asignaturas: asignaturasConEstado
         }]
       };
       
@@ -82,7 +196,9 @@ exports.obtenerEstructuraFacultad = async (req, res) => {
         facultad: estructura.facultad.nombre,
         total_carreras: estructura.carreras.length,
         carrera: estructura.carreras[0].nombre,
-        total_asignaturas: estructura.carreras[0].asignaturas.length
+        total_asignaturas: estructura.carreras[0].asignaturas.length,
+        conSyllabus: asignaturasConEstado.filter(a => a.tiene_syllabus).length,
+        conPrograma: asignaturasConEstado.filter(a => a.tiene_programa).length
       });
       
       return res.status(200).json({
@@ -138,28 +254,36 @@ exports.obtenerEstructuraFacultad = async (req, res) => {
       ]
     });
     
-    // Construir la estructura jerárquica
+    // Construir la estructura jerárquica con verificación real de documentos
+    const carrerasConEstado = await Promise.all(carreras.map(async (carrera) => {
+      const asignaturasBase = (carrera.asignaturas || []).map(asig => ({
+        id: asig.id,
+        nombre: asig.nombre,
+        codigo: asig.codigo,
+        nivel: asig.nivel ? asig.nivel.nombre : 'Sin nivel',
+        estado: asig.estado,
+        tiene_syllabus: false,
+        syllabus_id: null,
+        tiene_programa: false,
+        programa_id: null
+      }));
+      
+      const asignaturasConEstado = await verificarDocumentosPorPeriodo(asignaturasBase, periodoId);
+      
+      return {
+        id: carrera.id,
+        nombre: carrera.nombre,
+        mallas: carrera.mallas || [],
+        asignaturas: asignaturasConEstado
+      };
+    }));
+    
     const estructura = {
       facultad: {
         id: facultad.id,
         nombre: facultad.nombre
       },
-      carreras: carreras.map(carrera => ({
-        id: carrera.id,
-        nombre: carrera.nombre,
-        mallas: carrera.mallas || [],
-        asignaturas: (carrera.asignaturas || []).map(asig => ({
-          id: asig.id,
-          nombre: asig.nombre,
-          codigo: asig.codigo,
-          nivel: asig.nivel ? asig.nivel.nombre : 'Sin nivel',
-          estado: asig.estado,
-          tiene_syllabus: false,
-          syllabus_id: null,
-          tiene_programa: false,
-          programa_id: null
-        }))
-      }))
+      carreras: carrerasConEstado
     };
     
     console.log('📦 RESPUESTA (CASO 2 - Todas las carreras):', {
@@ -281,3 +405,173 @@ exports.obtenerAsignaturasCarrera = async (req, res) => {
 };
 
 module.exports = exports;
+
+// =========================================================================
+// CRUD SYLLABUS COMISIÓN ACADÉMICA
+// =========================================================================
+
+// 📝 CREAR SYLLABUS COMISIÓN
+exports.crearSyllabusComision = async (req, res) => {
+  try {
+    const { nombre, periodo, materias, datos_syllabus, asignatura_id } = req.body;
+    const usuario_id = req.user?.id || null;
+
+    if (!periodo) {
+      return res.status(400).json({ success: false, message: 'El periodo es obligatorio' });
+    }
+    if (!asignatura_id) {
+      return res.status(400).json({ success: false, message: 'La asignatura_id es obligatoria' });
+    }
+
+    // Verificar duplicado: mismo asignatura_id + periodo (buscar por ID o nombre)
+    let periodoValues = [periodo.toString()];
+    try {
+      const periodoRecord = await db.Periodo.findByPk(parseInt(periodo.toString()));
+      if (periodoRecord && periodoRecord.nombre) periodoValues.push(periodoRecord.nombre);
+    } catch(e) {}
+    
+    const existente = await db.SyllabusComisionAcademica.findOne({
+      where: { asignatura_id, periodo: { [Op.in]: periodoValues } }
+    });
+    if (existente) {
+      return res.status(409).json({
+        success: false,
+        message: 'Ya existe un syllabus para esta asignatura en este periodo',
+        data: existente
+      });
+    }
+
+    const nuevo = await db.SyllabusComisionAcademica.create({
+      nombre: nombre || 'Syllabus',
+      periodo: periodo.toString(),
+      materias,
+      datos_syllabus: typeof datos_syllabus === 'string' ? datos_syllabus : JSON.stringify(datos_syllabus),
+      asignatura_id,
+      usuario_id,
+      estado: 'activo'
+    });
+
+    // Devolver con datos_syllabus parseado
+    const result = nuevo.toJSON();
+    try { result.datos_syllabus = JSON.parse(result.datos_syllabus); } catch(e) {}
+
+    return res.status(201).json({ success: true, data: result });
+  } catch (error) {
+    console.error('❌ Error al crear syllabus comisión:', error);
+    return res.status(500).json({ success: false, message: 'Error al crear syllabus', error: error.message });
+  }
+};
+
+// 📖 OBTENER SYLLABUS COMISIÓN POR ID
+exports.obtenerSyllabusComision = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const syllabus = await db.SyllabusComisionAcademica.findByPk(id);
+    if (!syllabus) {
+      return res.status(404).json({ success: false, message: 'Syllabus no encontrado' });
+    }
+    const result = syllabus.toJSON();
+    try { result.datos_syllabus = JSON.parse(result.datos_syllabus); } catch(e) {}
+    return res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    console.error('❌ Error al obtener syllabus comisión:', error);
+    return res.status(500).json({ success: false, message: 'Error al obtener syllabus', error: error.message });
+  }
+};
+
+// 📖 OBTENER SYLLABUS COMISIÓN POR ASIGNATURA + PERIODO
+exports.obtenerSyllabusPorAsignaturaPeriodo = async (req, res) => {
+  try {
+    const { asignatura_id, periodo } = req.query;
+    if (!asignatura_id || !periodo) {
+      return res.status(400).json({ success: false, message: 'asignatura_id y periodo son obligatorios' });
+    }
+    
+    // Buscar por periodo ID o nombre (registros viejos guardaron nombre, nuevos guardan ID)
+    const periodoStr = periodo.toString();
+    let periodoValues = [periodoStr];
+    try {
+      const periodoRecord = await db.Periodo.findByPk(parseInt(periodoStr));
+      if (periodoRecord && periodoRecord.nombre) periodoValues.push(periodoRecord.nombre);
+    } catch(e) {}
+    
+    const syllabus = await db.SyllabusComisionAcademica.findOne({
+      where: { asignatura_id, periodo: { [Op.in]: periodoValues } }
+    });
+    if (!syllabus) {
+      return res.status(404).json({ success: false, message: 'Syllabus no encontrado para esa asignatura/periodo' });
+    }
+    const result = syllabus.toJSON();
+    try { result.datos_syllabus = JSON.parse(result.datos_syllabus); } catch(e) {}
+    return res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    console.error('❌ Error al buscar syllabus comisión:', error);
+    return res.status(500).json({ success: false, message: 'Error al buscar syllabus', error: error.message });
+  }
+};
+
+// ✏️ ACTUALIZAR SYLLABUS COMISIÓN
+exports.actualizarSyllabusComision = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nombre, periodo, materias, datos_syllabus } = req.body;
+
+    const syllabus = await db.SyllabusComisionAcademica.findByPk(id);
+    if (!syllabus) {
+      return res.status(404).json({ success: false, message: 'Syllabus no encontrado' });
+    }
+
+    await syllabus.update({
+      nombre: nombre || syllabus.nombre,
+      periodo: periodo ? periodo.toString() : syllabus.periodo,
+      materias: materias || syllabus.materias,
+      datos_syllabus: datos_syllabus 
+        ? (typeof datos_syllabus === 'string' ? datos_syllabus : JSON.stringify(datos_syllabus))
+        : syllabus.datos_syllabus,
+      usuario_id: req.user?.id || syllabus.usuario_id
+    });
+
+    const result = syllabus.toJSON();
+    try { result.datos_syllabus = JSON.parse(result.datos_syllabus); } catch(e) {}
+    return res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    console.error('❌ Error al actualizar syllabus comisión:', error);
+    return res.status(500).json({ success: false, message: 'Error al actualizar syllabus', error: error.message });
+  }
+};
+
+// 🗑️ ELIMINAR SYLLABUS COMISIÓN
+exports.eliminarSyllabusComision = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const syllabus = await db.SyllabusComisionAcademica.findByPk(id);
+    if (!syllabus) {
+      return res.status(404).json({ success: false, message: 'Syllabus no encontrado' });
+    }
+    await syllabus.destroy();
+    return res.status(200).json({ success: true, message: 'Syllabus eliminado correctamente' });
+  } catch (error) {
+    console.error('❌ Error al eliminar syllabus comisión:', error);
+    return res.status(500).json({ success: false, message: 'Error al eliminar syllabus', error: error.message });
+  }
+};
+
+// 📋 LISTAR TODOS LOS SYLLABUS COMISIÓN (con filtro periodo opcional)
+exports.listarSyllabusComision = async (req, res) => {
+  try {
+    const { periodo } = req.query;
+    const where = {};
+    if (periodo) where.periodo = periodo.toString();
+
+    const lista = await db.SyllabusComisionAcademica.findAll({
+      where,
+      order: [['createdAt', 'DESC']],
+      attributes: ['id', 'nombre', 'materias', 'periodo', 'asignatura_id', 'usuario_id', 'estado', 'createdAt', 'updatedAt']
+    });
+
+    return res.status(200).json({ success: true, data: lista });
+  } catch (error) {
+    console.error('❌ Error al listar syllabus comisión:', error);
+    return res.status(500).json({ success: false, message: 'Error al listar', error: error.message });
+  }
+};
