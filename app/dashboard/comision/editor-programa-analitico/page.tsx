@@ -14,8 +14,6 @@ import { Plus, Minus, Upload, Save, Merge, Trash2, Printer, X, Pencil, Check, Ar
 import { useAuth } from "@/contexts/auth-context"
 import { useSearchParams } from 'next/navigation'
 import * as mammoth from "mammoth"
-import jsPDF from "jspdf"
-import autoTable from "jspdf-autotable"
 
 // --- INTERFACES DE DATOS ---
 interface TableCell { 
@@ -92,6 +90,17 @@ export default function EditorProgramaAnaliticoComisionPage() {
         setSavedProgramas(programasArray);
         setPeriodos(periodosArray);
         
+        // Pre-seleccionar periodo desde URL o el actual
+        if (periodoParam) {
+          // El param puede ser un ID o un nombre; buscar correspondencia
+          const periodoObj = periodosArray.find((p: any) => p.id?.toString() === periodoParam || p.nombre === periodoParam);
+          setSelectedPeriod(periodoObj ? periodoObj.nombre : periodoParam);
+        } else if (!selectedPeriod && periodosArray.length > 0) {
+          const actual = periodosArray.find((p: any) => p.estado === 'actual');
+          if (actual) setSelectedPeriod(actual.nombre);
+          else setSelectedPeriod(periodosArray[0].nombre);
+        }
+        
         console.log('✅ Datos cargados:', {
           programas: programasArray.length,
           periodos: periodosArray.length,
@@ -117,10 +126,32 @@ export default function EditorProgramaAnaliticoComisionPage() {
       const programaToLoad = (match as any).datos_tabla || (match as any).datos_programa || null
       if (programaToLoad) {
         const uiData = typeof programaToLoad === 'string' ? JSON.parse(programaToLoad) : programaToLoad
+        if (!uiData.name) uiData.name = (match as any).nombre || 'Programa Analítico';
+        uiData.id = uiData.id || match.id;
+        // Reconstruir estilos desde sub-objeto styles
+        if (uiData.tabs) {
+          uiData.tabs = uiData.tabs.map((t: any) => ({
+            ...t,
+            rows: (t.rows || []).map((r: any) => ({
+              ...r,
+              cells: (r.cells || []).map((c: any) => ({
+                ...c,
+                backgroundColor: c.backgroundColor || c.styles?.backgroundColor,
+                textColor: c.textColor || c.styles?.textColor,
+                textAlign: c.textAlign || c.styles?.textAlign,
+                textOrientation: c.textOrientation || c.styles?.textOrientation || 'horizontal',
+                isEditable: true,
+              }))
+            }))
+          }));
+        }
         setProgramas([uiData])
-        setActiveProgramaId(uiData.id || match.id)
+        setActiveProgramaId(uiData.id)
         setActiveTabId(uiData.tabs?.[0]?.id || null)
-        setSelectedPeriod((match as any).periodo)
+        if ((match as any).periodo) {
+          const periodoObj = periodos.find((p: any) => p.id?.toString() === String((match as any).periodo));
+          setSelectedPeriod(periodoObj ? periodoObj.nombre : (match as any).periodo);
+        }
       }
     }
   }, [savedProgramas, asignaturaParam, periodoParam]);
@@ -306,11 +337,32 @@ export default function EditorProgramaAnaliticoComisionPage() {
         editorData.name = programaToLoad.nombre || 'Programa Analítico';
       }
       
+      // Reconstruir estilos desde el sub-objeto 'styles' y asegurar isEditable
+      if (editorData.tabs) {
+        editorData.tabs = editorData.tabs.map((t: any) => ({
+          ...t,
+          rows: (t.rows || []).map((r: any) => ({
+            ...r,
+            cells: (r.cells || []).map((c: any) => ({
+              ...c,
+              backgroundColor: c.backgroundColor || c.styles?.backgroundColor,
+              textColor: c.textColor || c.styles?.textColor,
+              textAlign: c.textAlign || c.styles?.textAlign,
+              textOrientation: c.textOrientation || c.styles?.textOrientation || 'horizontal',
+              isEditable: true,
+            }))
+          }))
+        }));
+      }
+      
       setProgramas([editorData]);
       setActiveProgramaId(editorData.id);
       setActiveTabId(editorData.tabs[0]?.id || null);
       
-      setSelectedPeriod(programaToLoad.periodo || '');
+      if (programaToLoad.periodo) {
+        const periodoObj = periodos.find((p: any) => p.id?.toString() === String(programaToLoad.periodo));
+        setSelectedPeriod(periodoObj ? periodoObj.nombre : programaToLoad.periodo);
+      }
       console.log("✅ Programa cargado exitosamente, periodo:", programaToLoad.periodo, "tabs:", editorData.tabs.length);
     } else {
       console.error("❌ No se encontró el programa con ID:", id);
@@ -371,7 +423,11 @@ export default function EditorProgramaAnaliticoComisionPage() {
              const rows: TableRow[] = rowsRaw.map((tr, rIdx) => ({
                 id: `row-${newTabs.length}-${rIdx}-${Date.now()}`,
                 cells: Array.from(tr.querySelectorAll("td, th")).map((td, cIdx) => {
-                  const content = td.textContent?.trim() || "";
+                  const tdEl = td as HTMLElement;
+                  const pElements = Array.from(tdEl.querySelectorAll('p'));
+                  const content = pElements.length > 0 
+                    ? pElements.map(p => (p.textContent || '').trim()).filter(t => t).join('\n')
+                    : (tdEl.textContent?.trim() || '');
                   const contentUpper = content.toUpperCase();
                   
                   const hasBold = !!td.querySelector("strong, b");
@@ -563,15 +619,165 @@ export default function EditorProgramaAnaliticoComisionPage() {
     }
   };
 
-  const handlePrintToPdf = () => { 
-    if(!activePrograma || !activeTab) return;
-    const doc=new jsPDF(); doc.setFontSize(18); doc.text(activePrograma.name, 14, 22); doc.setFontSize(12); doc.text(`Sección: ${activeTab.title}`, 14, 30); 
-    const body = activeTab.rows.map(r => r.cells.map(c => ({ content: c.content, rowSpan: c.rowSpan, colSpan: c.colSpan, _raw: c })));
-    autoTable(doc, { body: body as any, startY: 40, theme: 'grid', didParseCell: d => { 
-       const c=(d.cell.raw as any)._raw as TableCell;
-       if(c){ if(c.isHeader){d.cell.styles.fontStyle='bold';d.cell.styles.fillColor='#F3F4F6'} if(c.backgroundColor)d.cell.styles.fillColor=c.backgroundColor; }
-    } });
-    doc.save(`${activePrograma.name}_${activeTab.title}.pdf`);
+  const handlePrintToPdf = async () => { 
+    if(!activePrograma) return;
+
+    // =================================================================
+    // GENERAR PDF VÍA HTML NATIVO — preserva rowSpan/colSpan al 100%
+    // =================================================================
+    let tablesHtml = '';
+
+    for (const tab of activePrograma.tabs) {
+      if (!tab.rows || tab.rows.length === 0) continue;
+
+      // Título de sección
+      const isVisado = tab.title.toUpperCase().includes('VISADO') || tab.title.toUpperCase().includes('LEGALIZACIÓN');
+      // Renombrar "SECCIÓN 1" → "DATOS GENERALES"
+      let displayTitle = tab.title.toUpperCase();
+      if (/SECCI[OÓ]N\s*1/i.test(displayTitle)) displayTitle = 'DATOS GENERALES';
+      if (activePrograma.tabs.length > 1) {
+        tablesHtml += `<h3 style="margin-top:14px;margin-bottom:4px;font-size:11pt;color:#000;border-bottom:1.5pt solid #000;padding-bottom:2px;">${displayTitle}</h3>`;
+      }
+
+      // Tabla fiel
+      tablesHtml += '<table>';
+      for (const row of tab.rows) {
+        tablesHtml += '<tr>';
+        for (const cell of row.cells) {
+          if (cell.rowSpan === 0 || cell.colSpan === 0) continue;
+
+          const isHeader = cell.isHeader;
+          const isVertical = cell.textOrientation === 'vertical';
+          const isSep = cell.content.trim() === ':';
+
+          // Contenido con <br/> para saltos de línea
+          // Limpiar encabezados de sección que se hayan filtrado por error
+          let rawContent = (cell.content || '');
+          const seccionesLeaked = [
+            'RESULTADOS DE APRENDIZAJE DE LA ASIGNATURA',
+            'RESULTADOS DE APRENDIZAJE',
+            'CONTENIDOS GENERALES',
+            'CONTENIDOS DE LA ASIGNATURA',
+            'OBJETIVOS DE LA ASIGNATURA',
+            'COMPETENCIAS',
+            'CARACTERIZACIÓN DE LA ASIGNATURA',
+            'PROGRAMA ANALÍTICO DE ASIGNATURA',
+          ];
+          const cellIdx2 = row.cells.indexOf(cell);
+          const leftLabel2 = (cellIdx2 > 0 ? (row.cells[cellIdx2 - 1]?.content || '') : '').toUpperCase().trim();
+          if (leftLabel2 && seccionesLeaked.some(s => leftLabel2.includes(s.substring(0, 10)))) {
+            const lineasRaw = rawContent.split('\n');
+            const lineasLimpias = lineasRaw.filter(l => {
+              const lu = l.trim().toUpperCase();
+              return !seccionesLeaked.some(s => lu === s);
+            });
+            rawContent = lineasLimpias.join('\n').trim();
+          }
+          const content = rawContent.replace(/\n/g, '<br/>');
+
+          // Estilos inline fieles al Word original
+          const bg = cell.backgroundColor || (isHeader ? '#D9E2EC' : '#fff');
+          const color = cell.textColor || '#000';
+          const fw = isHeader ? 'bold' : 'normal';
+          const ta = isSep || isHeader || isVertical ? 'center' : (cell.textAlign || 'left');
+          const fs = isVertical ? '7pt' : '9pt';
+          const defaultPad = isVisado ? '40px 6px 6px 6px' : '4px 6px';
+          const pad = isVertical ? '2px 1px' : (isSep ? '1px 2px' : defaultPad);
+
+          let extraCss = '';
+          if (isVertical) {
+            extraCss = 'writing-mode:vertical-rl;transform:rotate(180deg);min-height:80px;max-width:24px;white-space:nowrap;';
+          }
+          if (isSep) {
+            extraCss += 'max-width:12px;white-space:nowrap;';
+          }
+
+          // Ancho: primera columna visible (etiquetas) = 22%
+          let widthCss = '';
+          const cellIdx = row.cells.indexOf(cell);
+          if (cellIdx === 0 && !isVertical && !isSep && cell.colSpan === 1) {
+            widthCss = 'width:22%;min-width:120px;';
+          }
+
+          tablesHtml += `<td rowspan="${cell.rowSpan||1}" colspan="${cell.colSpan||1}" style="border:1pt solid #000;padding:${pad};background:${bg};color:${color};font-weight:${fw};text-align:${ta};vertical-align:middle;font-size:${fs};line-height:1.3;word-break:break-word;${widthCss}${extraCss}">${content || '&nbsp;'}</td>`;
+        }
+        tablesHtml += '</tr>';
+      }
+      tablesHtml += '</table>';
+    }
+
+    const htmlDoc = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title> </title>
+<style>
+  @page { size: A4 landscape; margin: 0; }
+  @media print {
+    html, body { margin:0; padding: 10mm 12mm; }
+    body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+    table { page-break-inside:auto; }
+    tr { page-break-inside:avoid; page-break-after:auto; }
+    h3 { page-break-after:avoid; }
+  }
+  * { box-sizing:border-box; }
+  body {
+    font-family: Calibri, 'Segoe UI', Arial, Helvetica, sans-serif;
+    margin: 0;
+    padding: 0 14px;
+    color: #000;
+    font-size: 9pt;
+    line-height: 1.3;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 4px;
+    table-layout: fixed;
+  }
+  td {
+    border: 1pt solid #000;
+    padding: 5px 8px;
+    vertical-align: middle;
+    font-size: 9pt;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+  .hdr {
+    text-align: center;
+    padding: 6px 0 10px 0;
+    border-bottom: 2pt solid #000;
+    margin-bottom: 8px;
+  }
+  .hdr img { height: 55px; vertical-align: middle; margin-right: 10px; }
+  .hdr-text { display: inline-block; vertical-align: middle; text-align: center; }
+  .hdr-text h1 { font-size: 14pt; margin: 0; font-weight: bold; }
+  .hdr-text h2 { font-size: 12pt; margin: 2px 0 0 0; font-weight: bold; }
+  .hdr-text p  { font-size: 10pt; margin: 2px 0 0 0; font-weight: normal; }
+</style>
+</head>
+<body>
+  <div class="hdr">
+    <img src="/images/unesum-logo-official.png" onerror="this.style.display='none'" />
+    <div class="hdr-text">
+      <h1>UNIVERSIDAD ESTATAL DEL SUR DE MANABÍ</h1>
+      <h2>PROGRAMA ANALÍTICO DE ASIGNATURA</h2>
+      <p>${activePrograma.name || ''}</p>
+    </div>
+  </div>
+  ${tablesHtml}
+</body>
+</html>`;
+
+    // Abrir ventana y lanzar impresión (el usuario elige "Guardar como PDF")
+    const w = window.open('', '_blank', 'width=1100,height=800');
+    if (!w) { alert('Permite ventanas emergentes para generar el PDF.'); return; }
+    w.document.write(htmlDoc);
+    w.document.close();
+    // Esperar renderizado completo antes de imprimir
+    const triggerPrint = () => { try { w.focus(); w.print(); } catch(_){} };
+    w.onload = () => setTimeout(triggerPrint, 400);
+    setTimeout(triggerPrint, 1500); // fallback
   }
 
   // --- FUNCIONES ADICIONALES ---

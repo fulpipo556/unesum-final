@@ -122,6 +122,12 @@ exports.getMySyllabi = async (req, res) => {
           attributes: ['id', 'nombre']
         },
         {
+          model: db.Asignatura,
+          as: 'asignaturas',
+          attributes: ['id', 'nombre', 'codigo'],
+          through: { attributes: [] }
+        },
+        {
           model: db.Paralelo,
           as: 'paralelo',
           attributes: ['id', 'nombre']
@@ -133,15 +139,33 @@ exports.getMySyllabi = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Profesor no encontrado' });
     }
 
-    // Obtener syllabi creados para la asignatura del profesor
+    // Obtener todas las asignaturas del profesor (principal + múltiples)
+    const asignaturaIdsSet = new Set();
+    if (profesor.asignatura?.id) asignaturaIdsSet.add(Number(profesor.asignatura.id));
+    (profesor.asignaturas || []).forEach((asig) => {
+      if (asig?.id) asignaturaIdsSet.add(Number(asig.id));
+    });
+    const asignaturaIds = [...asignaturaIdsSet];
+
+    // Obtener syllabi visibles para el profesor
     const Syllabus = db.Syllabus;
+    const whereSyllabus = {
+      [Op.or]: [
+        { profesor_id: profesorId }
+      ]
+    };
+
+    if (asignaturaIds.length > 0) {
+      whereSyllabus[Op.or].push({
+        profesor_id: null,
+        asignatura_id: {
+          [Op.in]: asignaturaIds
+        }
+      });
+    }
+
     const syllabi = await Syllabus.findAll({
-      where: {
-        [Op.or]: [
-          { profesor_id: profesorId }, // Syllabi asignados directamente al profesor
-          { profesor_id: null } // Syllabi sin asignar (plantillas generales)
-        ]
-      },
+      where: whereSyllabus,
       order: [['createdAt', 'DESC']]
     });
 
@@ -154,6 +178,7 @@ exports.getMySyllabi = async (req, res) => {
           apellidos: profesor.apellidos,
           email: profesor.email,
           asignatura: profesor.asignatura,
+          asignaturas: profesor.asignaturas || [],
           nivel: profesor.nivel,
           paralelo: profesor.paralelo
         },

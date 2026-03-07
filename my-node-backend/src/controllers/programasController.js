@@ -165,8 +165,9 @@ exports.delete = async (req, res) => {
       });
     }
 
-    // ¡VERIFICACIÓN DE PERMISOS!
-    if (programa.usuario_id !== userId) {
+    // ¡VERIFICACIÓN DE PERMISOS! Admins y comisión pueden eliminar cualquier programa
+    const rolesAdmin = ['administrador', 'comision_academica', 'comision'];
+    if (!rolesAdmin.includes(req.user.rol) && programa.usuario_id !== userId) {
         return res.status(403).json({ success: false, message: 'No tienes permiso para eliminar este programa.' });
     }
     

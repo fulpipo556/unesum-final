@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Save, ArrowLeft, Loader2 } from "lucide-react"
+import { Save, ArrowLeft, Loader2, FileDown } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import Link from "next/link"
 
@@ -41,6 +41,7 @@ export default function DocenteEditorProgramaAnaliticoPage() {
   const [error, setError] = useState<string | null>(null)
   const [programa_comision_id, setProgramaComisionId] = useState<number | null>(null)
   const [hasDocenteVersion, setHasDocenteVersion] = useState(false)
+  const [selectedAsignaturaId, setSelectedAsignaturaId] = useState<string>('')
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'
 
@@ -75,23 +76,33 @@ export default function DocenteEditorProgramaAnaliticoPage() {
     const loadProfesor = async () => {
       try {
         const res = await apiRequest('/docente-editor/mi-info')
-        if (res.success) setProfesorInfo(res.data)
+        if (res.success) {
+          setProfesorInfo(res.data)
+          // Auto-seleccionar la primera asignatura disponible
+          const asigs = res.data.todas_asignaturas || []
+          const primaryId = res.data.asignatura_id || res.data.asignatura?.id
+          if (primaryId) {
+            setSelectedAsignaturaId(String(primaryId))
+          } else if (asigs.length > 0) {
+            setSelectedAsignaturaId(String(asigs[0].id))
+          }
+        }
       } catch (e) { console.error('Error cargando info profesor:', e) }
     }
     loadProfesor()
   }, [])
 
-  // Cargar programa cuando cambia el periodo
+  // Cargar programa cuando cambia el periodo o asignatura seleccionada
   useEffect(() => {
-    if (!selectedPeriod || !profesorInfo) return
+    if (!selectedPeriod || !profesorInfo || !selectedAsignaturaId) return
     loadPrograma()
-  }, [selectedPeriod, profesorInfo])
+  }, [selectedPeriod, profesorInfo, selectedAsignaturaId])
 
   const loadPrograma = async () => {
     setLoading(true)
     setError(null)
 
-    const asignaturaId = profesorInfo?.asignatura_id || profesorInfo?.asignatura?.id
+    const asignaturaId = selectedAsignaturaId
     if (!asignaturaId) {
       setError("No tienes una asignatura asignada. Contacta al administrador.")
       setLoading(false)
@@ -246,7 +257,7 @@ export default function DocenteEditorProgramaAnaliticoPage() {
     if (!programaData) return alert("No hay programa para guardar.")
     if (!selectedPeriod) return alert("Seleccione un periodo.")
 
-    const asignaturaId = profesorInfo?.asignatura_id || profesorInfo?.asignatura?.id
+    const asignaturaId = selectedAsignaturaId
     setIsSaving(true)
     try {
       const datosParaGuardar = {
@@ -283,6 +294,166 @@ export default function DocenteEditorProgramaAnaliticoPage() {
     }
   }
 
+  // ==============================
+  // EXPORTAR PDF — Programa Analítico
+  // ==============================
+  const handleExportPDF = () => {
+    if (!programaData) return;
+
+    const allTabs = programaData.tabs;
+    let tablesHtml = '';
+
+    for (let tabIdx = 0; tabIdx < allTabs.length; tabIdx++) {
+      const tab = allTabs[tabIdx];
+      if (!tab || !tab.rows || tab.rows.length === 0) continue;
+
+      const isVisado = tab.title.toUpperCase().includes('VISADO') || tab.title.toUpperCase().includes('LEGALIZACIÓN');
+      let displayTitle = tab.title.toUpperCase();
+      if (/SECCI[OÓ]N\s*1/i.test(displayTitle)) displayTitle = 'DATOS GENERALES';
+      if (allTabs.length > 1) {
+        tablesHtml += `<h3 style="margin-top:14px;margin-bottom:4px;font-size:10pt;color:#000;border-bottom:1.5pt solid #000;padding-bottom:2px;font-weight:bold;text-align:center;">${displayTitle}</h3>`;
+      }
+
+      // Contar columnas para escalar fuente en tablas anchas
+      let firstRowCols = 0;
+      for (const c of tab.rows[0]?.cells || []) {
+        if (c.rowSpan !== 0 && c.colSpan !== 0) firstRowCols += (c.colSpan || 1);
+      }
+      const isWideTable = firstRowCols > 6;
+      const baseFontSize = isWideTable ? '7.5pt' : '9pt';
+      const vertFontSize = isWideTable ? '6.5pt' : '7pt';
+
+      tablesHtml += `<table style="${isWideTable ? 'font-size:' + baseFontSize + ';' : ''}">`;
+      for (let rowIdx = 0; rowIdx < tab.rows.length; rowIdx++) {
+        const row = tab.rows[rowIdx];
+        tablesHtml += '<tr>';
+        for (let cellIdx = 0; cellIdx < row.cells.length; cellIdx++) {
+          const cell = row.cells[cellIdx];
+          if (cell.rowSpan === 0 || cell.colSpan === 0) continue;
+
+          const isHeader = cell.isHeader;
+          const isVertical = cell.textOrientation === 'vertical';
+          const isSep = cell.content.trim() === ':';
+
+          const rawContent = cell.content || '';
+          const content = rawContent.replace(/\n/g, '<br/>');
+
+          const bg = cell.backgroundColor || (isHeader ? '#D9E2EC' : '#fff');
+          const color = cell.textColor || '#000';
+          const fw = isHeader ? 'bold' : 'normal';
+          const ta = isSep || isHeader || isVertical ? 'center' : (cell.textAlign || 'left');
+          const fs = isVertical ? vertFontSize : baseFontSize;
+          const defaultPad = isVisado ? '40px 6px 6px 6px' : (isWideTable ? '2px 4px' : '4px 6px');
+          const pad = isVertical ? '2px 1px' : (isSep ? '1px 2px' : defaultPad);
+
+          let extraCss = '';
+          if (isVertical) {
+            extraCss = 'writing-mode:vertical-rl;transform:rotate(180deg);min-height:80px;max-width:30px;white-space:nowrap;';
+          }
+          if (isSep) {
+            extraCss += 'max-width:14px;white-space:nowrap;';
+          }
+
+          // Ancho inteligente según tipo de contenido
+          const contentText = (rawContent || '').trim();
+          const contentLen = contentText.length;
+          const isNumericOnly = /^\d{1,4}$/.test(contentText);
+          let widthCss = '';
+          if (isVertical) {
+            widthCss = 'width:28px;max-width:32px;';
+          } else if (isSep) {
+            widthCss = 'width:14px;max-width:16px;';
+          } else if (isNumericOnly && contentLen <= 3) {
+            widthCss = 'width:35px;white-space:nowrap;text-align:center;';
+          } else if (isHeader && contentLen <= 4 && cell.colSpan === 1 && !isVertical) {
+            widthCss = 'width:40px;white-space:nowrap;text-align:center;';
+          } else if (cellIdx === 0 && !isVertical && !isSep && cell.colSpan === 1) {
+            widthCss = isWideTable ? 'width:10%;min-width:70px;' : 'width:18%;min-width:100px;';
+          }
+
+          tablesHtml += `<td rowspan="${cell.rowSpan||1}" colspan="${cell.colSpan||1}" style="border:1pt solid #000;padding:${pad};background:${bg};color:${color};font-weight:${fw};text-align:${ta};vertical-align:middle;font-size:${fs};line-height:1.3;word-break:break-word;${widthCss}${extraCss}">${content || '&nbsp;'}</td>`;
+        }
+        tablesHtml += '</tr>';
+      }
+      tablesHtml += '</table>';
+    }
+
+    const programaName = programaData.name || 'Programa Analítico';
+    const asignaturaNombre = profesorInfo?.asignatura?.nombre || profesorInfo?.todas_asignaturas?.[0]?.nombre || '';
+    const periodoNombre = periodos.find((p: any) => String(p.id) === selectedPeriod)?.nombre || '';
+
+    const htmlDoc = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Programa Analítico - ${asignaturaNombre}</title>
+<style>
+  @page { size: A4 landscape; margin: 0; }
+  @media print {
+    html, body { margin:0; padding: 10mm 12mm; }
+    body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+    table { page-break-inside:auto; }
+    tr { page-break-inside:avoid; page-break-after:auto; }
+    h3 { page-break-after:avoid; }
+  }
+  * { box-sizing:border-box; }
+  body {
+    font-family: Calibri, 'Segoe UI', Arial, Helvetica, sans-serif;
+    margin: 0;
+    padding: 0 14px;
+    color: #000;
+    font-size: 9pt;
+    line-height: 1.3;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 4px;
+    table-layout: auto;
+  }
+  td {
+    border: 1pt solid #000;
+    padding: 3px 5px;
+    vertical-align: middle;
+    font-size: 8pt;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+  .hdr {
+    text-align: center;
+    padding: 6px 0 10px 0;
+    border-bottom: 2pt solid #000;
+    margin-bottom: 8px;
+  }
+  .hdr img { height: 55px; vertical-align: middle; margin-right: 10px; }
+  .hdr-text { display: inline-block; vertical-align: middle; text-align: center; }
+  .hdr-text h1 { font-size: 14pt; margin: 0; font-weight: bold; color: #000; }
+  .hdr-text h2 { font-size: 12pt; margin: 2px 0 0 0; font-weight: bold; color: #000; }
+  .hdr-text p  { font-size: 10pt; margin: 2px 0 0 0; font-weight: bold; color: #000; }
+</style>
+</head>
+<body>
+  <div class="hdr">
+    <img src="/images/unesum-logo-official.png" onerror="this.style.display='none'" />
+    <div class="hdr-text">
+      <h1>UNIVERSIDAD ESTATAL DEL SUR DE MANAB\u00CD</h1>
+      <h2>PROGRAMA ANAL\u00CDTICO DE ASIGNATURA</h2>
+      <p>${asignaturaNombre}${periodoNombre ? ' - ' + periodoNombre : ''}</p>
+    </div>
+  </div>
+  ${tablesHtml}
+</body>
+</html>`;
+
+    const w = window.open('', '_blank', 'width=1100,height=800');
+    if (!w) { alert('Permite ventanas emergentes para generar el PDF.'); return; }
+    w.document.write(htmlDoc);
+    w.document.close();
+    const triggerPrint = () => { try { w.focus(); w.print(); } catch(_){} };
+    w.onload = () => setTimeout(triggerPrint, 400);
+    setTimeout(triggerPrint, 1500);
+  };
+
   return (
     <ProtectedRoute allowedRoles={["profesor", "docente"]}>
       <div className="min-h-screen bg-gray-50">
@@ -298,11 +469,22 @@ export default function DocenteEditorProgramaAnaliticoPage() {
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Editor de Programa Analítico</h1>
                 <p className="text-sm text-gray-500">
-                  {profesorInfo ? `${profesorInfo.nombres} ${profesorInfo.apellidos} — ${profesorInfo.asignatura?.nombre || 'Sin asignatura'}` : 'Cargando...'}
+                  {profesorInfo ? `${profesorInfo.nombres} ${profesorInfo.apellidos}` : 'Cargando...'}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-3">
+              {/* Selector de asignatura cuando tiene múltiples */}
+              {profesorInfo?.todas_asignaturas?.length > 1 && (
+                <Select value={selectedAsignaturaId} onValueChange={setSelectedAsignaturaId}>
+                  <SelectTrigger className="w-[250px]"><SelectValue placeholder="Asignatura" /></SelectTrigger>
+                  <SelectContent>
+                    {profesorInfo.todas_asignaturas.map((a: any) => (
+                      <SelectItem key={a.id} value={String(a.id)}>{a.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
                 <SelectTrigger className="w-[250px]"><SelectValue placeholder="Periodo" /></SelectTrigger>
                 <SelectContent>
@@ -311,6 +493,9 @@ export default function DocenteEditorProgramaAnaliticoPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <Button onClick={handleExportPDF} variant="outline" disabled={!programaData}>
+                <FileDown className="h-4 w-4 mr-2" /> Exportar PDF
+              </Button>
               <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700" disabled={isSaving || !programaData}>
                 {isSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Guardando...</> : <><Save className="h-4 w-4 mr-2" /> Guardar</>}
               </Button>
@@ -376,19 +561,32 @@ export default function DocenteEditorProgramaAnaliticoPage() {
                                   if (cell.rowSpan === 0 || cell.colSpan === 0) return null;
 
                                   const isVertical = cell.textOrientation === 'vertical'
+                                  const cellText = (cell.content || '').trim();
+                                  const isSep = cellText === ':';
+                                  const isNumericCell = /^\d{1,4}$/.test(cellText);
+                                  const isShortHdr = cell.isHeader && cellText.length <= 5 && cell.colSpan === 1 && !isVertical;
+
+                                  let cellMinW = '40px';
+                                  let cellMaxW: string | undefined = undefined;
+                                  if (isVertical) { cellMinW = '28px'; cellMaxW = '36px'; }
+                                  else if (isSep) { cellMinW = '14px'; cellMaxW = '18px'; }
+                                  else if (isNumericCell && cellText.length <= 3) { cellMinW = '30px'; cellMaxW = '50px'; }
+                                  else if (isShortHdr) { cellMinW = '35px'; cellMaxW = '55px'; }
+                                  else if (cellText.length > 5 || cell.isHeader) { cellMinW = '80px'; }
 
                                   return (
                                     <td
                                       key={cell.id}
-                                      className={`border relative align-top cursor-cell ${
+                                      className={`border relative align-middle cursor-cell ${
                                         cell.isHeader
-                                          ? 'border-gray-300 bg-gray-100/80 font-bold text-gray-800 hover:bg-gray-200/80'
+                                          ? 'border-gray-300 bg-gray-100/80 font-bold text-black text-center hover:bg-gray-200/80'
                                           : 'border-gray-200 bg-white text-gray-700 hover:bg-blue-50/50'
                                       }`}
                                       style={{
                                         backgroundColor: cell.backgroundColor || undefined,
                                         padding: 0,
-                                        minWidth: isVertical ? '28px' : '40px',
+                                        minWidth: cellMinW,
+                                        maxWidth: cellMaxW,
                                       }}
                                       rowSpan={cell.rowSpan}
                                       colSpan={cell.colSpan}
@@ -398,11 +596,11 @@ export default function DocenteEditorProgramaAnaliticoPage() {
                                       }}
                                     >
                                       <div
-                                        className="w-full h-full px-1 py-0.5 flex justify-start text-left"
+                                        className={`w-full h-full px-2 py-1.5 flex ${cell.isHeader ? 'justify-center text-center' : 'justify-start text-left'}`}
                                         style={{
                                           writingMode: isVertical ? 'vertical-rl' : 'horizontal-tb',
                                           transform: isVertical ? 'rotate(180deg)' : 'none',
-                                          alignItems: 'flex-start',
+                                          alignItems: 'center',
                                           maxHeight: isVertical ? '100px' : 'none',
                                           whiteSpace: isVertical ? 'nowrap' : 'pre-wrap',
                                           overflow: 'hidden',

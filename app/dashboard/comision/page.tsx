@@ -33,34 +33,7 @@ export default function ComisionDashboard() {
       color: "bg-indigo-500",
       featured: true,
     },
-    {
-      title: "Extracción Programa Analítico",
-      description: "Extrae y gestiona programas analíticos de archivos Excel/Word",
-      icon: Upload,
-      href: "/dashboard/comision/programa-analitico",
-      color: "bg-blue-400",
-    },
-    {
-      title: "Extracción Syllabus",
-      description: "Extrae y organiza syllabus desde documentos",
-      icon: Sparkles,
-      href: "/dashboard/comision/syllabus",
-      color: "bg-purple-500",
-    },
-    {
-      title: "Comparar Documentos",
-      description: "Compara títulos entre Programa Analítico y Syllabus",
-      icon: GitCompare,
-      href: "/dashboard/comision/comparar-documentos",
-      color: "bg-orange-500",
-    },
-    {
-      title: "Syllabus Extraídos",
-      description: "Revisar y validar formularios de Syllabus extraídos",
-      icon: FileCheck,
-      href: "/dashboard/comision/syllabus-formularios",
-      color: "bg-violet-500",
-    },
+    
   ]
 
   return (
@@ -112,7 +85,7 @@ export default function ComisionDashboard() {
 
           {/* Otros Módulos */}
           <div>
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Otras Herramientas</h2>
+
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {comisionModules.filter(m => !m.featured).map((module) => {
                 const IconComponent = module.icon

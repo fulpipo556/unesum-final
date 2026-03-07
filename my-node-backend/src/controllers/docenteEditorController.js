@@ -15,6 +15,9 @@ exports.getProfesorInfo = async (req, res) => {
         { model: Asignatura, as: 'asignatura', include: [
           { model: Carrera, as: 'carrera' }
         ]},
+        { model: Asignatura, as: 'asignaturas', through: { attributes: [] }, include: [
+          { model: Carrera, as: 'carrera' }
+        ]},
         { model: Nivel, as: 'nivel' },
         { model: Paralelo, as: 'paralelo' }
       ]
@@ -24,7 +27,24 @@ exports.getProfesorInfo = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Profesor no encontrado' });
     }
 
-    res.json({ success: true, data: profesor });
+    // Construir lista unificada de asignaturas (principal + múltiples)
+    const todasAsignaturas = [];
+    const idsVistos = new Set();
+    if (profesor.asignatura) {
+      todasAsignaturas.push(profesor.asignatura);
+      idsVistos.add(profesor.asignatura.id);
+    }
+    (profesor.asignaturas || []).forEach(a => {
+      if (!idsVistos.has(a.id)) {
+        todasAsignaturas.push(a);
+        idsVistos.add(a.id);
+      }
+    });
+
+    const data = profesor.toJSON();
+    data.todas_asignaturas = todasAsignaturas;
+
+    res.json({ success: true, data });
   } catch (error) {
     console.error('Error getProfesorInfo:', error);
     res.status(500).json({ success: false, message: error.message });
@@ -44,7 +64,7 @@ exports.getSyllabusComision = async (req, res) => {
 
     let syllabus = null;
 
-    // 1. Buscar en tabla syllabus_comision_academica
+    // 1. Buscar en tabla syllabus_comision_academica por asignatura_id exacto
     if (periodo) {
       syllabus = await SyllabusComisionAcademica.findOne({
         where: {
@@ -58,23 +78,32 @@ exports.getSyllabusComision = async (req, res) => {
       });
     }
     
-    if (!syllabus && periodo) {
-      // 2. Buscar sin asignatura_id (syllabus genérico del periodo)
+    // 2. Buscar en syllabus_comision_academica por asignatura_id sin periodo
+    if (!syllabus) {
       syllabus = await SyllabusComisionAcademica.findOne({
-        where: { periodo: periodo },
+        where: { asignatura_id: asignatura_id },
         order: [['created_at', 'DESC']]
       });
     }
 
     if (!syllabus) {
-      // 3. Buscar en tabla general syllabi
-      const whereClause = {};
+      // 3. Buscar en tabla general syllabi por asignatura_id
+      const whereClause = { asignatura_id: asignatura_id };
       if (periodo) {
         whereClause.periodo = { [Op.in]: [periodo, String(periodo)] };
       }
 
       syllabus = await Syllabus.findOne({
         where: whereClause,
+        order: [['createdAt', 'DESC']],
+        paranoid: false
+      });
+    }
+
+    // 4. Último intento: buscar por asignatura_id sin periodo en tabla general
+    if (!syllabus) {
+      syllabus = await Syllabus.findOne({
+        where: { asignatura_id: asignatura_id },
         order: [['createdAt', 'DESC']],
         paranoid: false
       });
@@ -135,16 +164,6 @@ exports.getProgramaComision = async (req, res) => {
     if (!programa) {
       programa = await ProgramasAnaliticos.findOne({
         where: { asignatura_id: asignatura_id },
-        order: [['createdAt', 'DESC']]
-      });
-    }
-
-    // 3. Fallback: buscar por periodo (cualquier asignatura)
-    if (!programa && periodo) {
-      programa = await ProgramasAnaliticos.findOne({
-        where: {
-          periodo: { [Op.in]: [periodo, String(periodo)] }
-        },
         order: [['createdAt', 'DESC']]
       });
     }

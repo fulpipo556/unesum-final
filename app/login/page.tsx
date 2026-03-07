@@ -204,6 +204,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    suppressHydrationWarning
                   />
                 </div>
 
@@ -216,6 +217,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
+                      suppressHydrationWarning
                     />
                     <Button
                       type="button"

@@ -339,6 +339,7 @@ export default function GestionDocentesPage() {
 
   const carrerasFiltradasPorFiltro = useMemo(() => {
     if (!filtros.facultad) return [];
+    if (filtros.facultad === 'todas') return carreras;
     return carreras.filter(c => c.facultad_id === parseInt(filtros.facultad, 10));
   }, [filtros.facultad, carreras]);
 
@@ -550,7 +551,7 @@ export default function GestionDocentesPage() {
                     <Select 
                       value={filtros.carrera} 
                       onValueChange={(v) => setFiltros(prev => ({ ...prev, carrera: v, malla: "" }))}
-                      disabled={!filtros.facultad || filtros.facultad === "todas"}
+                      disabled={!filtros.facultad}
                     >
                       <SelectTrigger id="filtro-carrera">
                         <SelectValue placeholder="Todas las carreras" />
@@ -855,13 +856,13 @@ export default function GestionDocentesPage() {
                 <div className="overflow-x-auto">
                   {loading ? (
                     <div className="flex justify-center py-10"><Loader2 className="h-8 w-8 animate-spin text-emerald-600" /></div>
-                  ) : !filtros.carrera ? (
+                  ) : profesoresFiltrados.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 text-center">
                       <div className="bg-gray-100 rounded-full p-4 mb-4">
                         <UserPlus className="h-8 w-8 text-gray-400" />
                       </div>
-                      <p className="text-gray-600 font-medium mb-2">Seleccione una carrera</p>
-                      <p className="text-sm text-gray-500">Por favor, seleccione una carrera en los filtros para ver los docentes registrados.</p>
+                      <p className="text-gray-600 font-medium mb-2">{!filtros.facultad || filtros.facultad === 'todas' ? 'Seleccione una facultad' : 'No se encontraron docentes'}</p>
+                      <p className="text-sm text-gray-500">{!filtros.facultad || filtros.facultad === 'todas' ? 'Seleccione una facultad en los filtros para ver los docentes registrados.' : 'No hay docentes registrados con los filtros seleccionados.'}</p>
                     </div>
                   ) : (
                     <Table>

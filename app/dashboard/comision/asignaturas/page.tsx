@@ -18,7 +18,9 @@ import {
   List,
   AlertCircle,
   Plus,
-  Calendar
+  Calendar,
+  Trash2,
+  Pencil
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -147,10 +149,48 @@ export default function AsignaturasComisionPage() {
     }
   };
 
-  const eliminarSyllabus = async (syllabusId: number) => {
+  const eliminarSyllabus = async (syllabusId: number, source?: string) => {
+    if (!confirm('¿Está seguro de eliminar este syllabus? Esta acción no se puede deshacer.')) return;
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/syllabi/${syllabusId}`, {
+      
+      // Intentar primero con el endpoint de comisión académica
+      const endpoints = source === 'comision' 
+        ? [`${process.env.NEXT_PUBLIC_API_URL}/comision-academica/syllabus/${syllabusId}`, `${process.env.NEXT_PUBLIC_API_URL}/syllabi/${syllabusId}`]
+        : [`${process.env.NEXT_PUBLIC_API_URL}/syllabi/${syllabusId}`, `${process.env.NEXT_PUBLIC_API_URL}/comision-academica/syllabus/${syllabusId}`];
+      
+      let deleted = false;
+      for (const url of endpoints) {
+        const response = await fetch(url, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (response.ok) {
+          deleted = true;
+          break;
+        }
+      }
+
+      if (deleted) {
+        alert('✅ Syllabus eliminado correctamente');
+        await cargarEstructura();
+      } else {
+        throw new Error('No se pudo eliminar el syllabus');
+      }
+    } catch (err: any) {
+      console.error('Error:', err);
+      alert('❌ Error al eliminar: ' + err.message);
+    }
+  };
+
+  const eliminarPrograma = async (programaId: number) => {
+    if (!confirm('¿Está seguro de eliminar este programa analítico? Esta acción no se puede deshacer.')) return;
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/programas-analiticos/${programaId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -159,10 +199,10 @@ export default function AsignaturasComisionPage() {
       });
 
       if (response.ok) {
-        alert('✅ Syllabus eliminado correctamente');
-        await cargarEstructura(); // Recargar datos
+        alert('✅ Programa analítico eliminado correctamente');
+        await cargarEstructura();
       } else {
-        throw new Error('Error al eliminar syllabus');
+        throw new Error('Error al eliminar programa analítico');
       }
     } catch (err: any) {
       console.error('Error:', err);
@@ -493,12 +533,23 @@ export default function AsignaturasComisionPage() {
                         
                         <div className="flex gap-2">
                           {asignatura.tiene_syllabus ? (
-                            <Link href={`/dashboard/comision/editor-syllabus?id=${asignatura.syllabus_id}&asignatura=${asignatura.id}&periodo=${periodoSeleccionado}&source=${asignatura.syllabus_source || 'comision'}`}>
-                              <Button size="sm" variant="outline" className="border-green-300 text-green-700 bg-green-50">
-                                <CheckCircle2 className="h-4 w-4 mr-1" />
-                                Ver Syllabus
+                            <div className="flex gap-1">
+                              <Link href={`/dashboard/comision/editor-syllabus?id=${asignatura.syllabus_id}&asignatura=${asignatura.id}&periodo=${periodoSeleccionado}&source=${asignatura.syllabus_source || 'comision'}`}>
+                                <Button size="sm" variant="outline" className="border-green-300 text-green-700 bg-green-50">
+                                  <CheckCircle2 className="h-4 w-4 mr-1" />
+                                  Ver Syllabus
+                                </Button>
+                              </Link>
+                              <Link href={`/dashboard/comision/editor-syllabus?id=${asignatura.syllabus_id}&asignatura=${asignatura.id}&periodo=${periodoSeleccionado}&source=${asignatura.syllabus_source || 'comision'}`}>
+                                <Button size="sm" variant="outline" className="border-blue-300 text-blue-700 bg-blue-50" title="Editar Syllabus">
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                              </Link>
+                              <Button size="sm" variant="outline" className="border-red-300 text-red-700 bg-red-50" title="Eliminar Syllabus"
+                                onClick={() => asignatura.syllabus_id && eliminarSyllabus(asignatura.syllabus_id, asignatura.syllabus_source)}>
+                                <Trash2 className="h-4 w-4" />
                               </Button>
-                            </Link>
+                            </div>
                           ) : (
                             <Button 
                               size="sm" 
@@ -512,12 +563,23 @@ export default function AsignaturasComisionPage() {
                           )}
                           
                           {asignatura.tiene_programa ? (
-                            <Link href={`/dashboard/comision/crear-programa-analitico?id=${asignatura.programa_id}&asignatura=${asignatura.id}&periodo=${periodoSeleccionado}`}>
-                              <Button size="sm" variant="outline" className="border-green-300 text-green-700 bg-green-50">
-                                <CheckCircle2 className="h-4 w-4 mr-1" />
-                                Ver Programa
+                            <div className="flex gap-1">
+                              <Link href={`/dashboard/comision/crear-programa-analitico?id=${asignatura.programa_id}&asignatura=${asignatura.id}&periodo=${periodoSeleccionado}`}>
+                                <Button size="sm" variant="outline" className="border-green-300 text-green-700 bg-green-50">
+                                  <CheckCircle2 className="h-4 w-4 mr-1" />
+                                  Ver Programa
+                                </Button>
+                              </Link>
+                              <Link href={`/dashboard/comision/crear-programa-analitico?id=${asignatura.programa_id}&asignatura=${asignatura.id}&periodo=${periodoSeleccionado}`}>
+                                <Button size="sm" variant="outline" className="border-blue-300 text-blue-700 bg-blue-50" title="Editar Programa">
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                              </Link>
+                              <Button size="sm" variant="outline" className="border-red-300 text-red-700 bg-red-50" title="Eliminar Programa"
+                                onClick={() => asignatura.programa_id && eliminarPrograma(asignatura.programa_id)}>
+                                <Trash2 className="h-4 w-4" />
                               </Button>
-                            </Link>
+                            </div>
                           ) : (
                             <Link href={`/dashboard/comision/crear-programa-analitico?asignatura=${asignatura.id}&periodo=${periodoSeleccionado}&nueva=true`}>
                               <Button size="sm" variant="default" disabled={!periodoSeleccionado}>

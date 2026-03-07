@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Minus, Upload, Save, Merge, Trash2, Printer, X, Pencil, Check, ArrowUpFromLine, Copy, FileText, Eraser, FileDown } from "lucide-react"
+import { Plus, Minus, Upload, Save, Merge, Trash2, Printer, X, Pencil, Check, ArrowUpFromLine, Copy, FileText, Eraser, FileDown, BookOpen, GraduationCap, Calendar, Columns, Rows3, Type, Sparkles, ChevronRight, Eye, PenLine } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import * as mammoth from "mammoth"
 import JSZip from "jszip" 
@@ -103,8 +103,24 @@ const extraerTablasNativasWord = async (file: File): Promise<ExtractedCell[][][]
                 while (cIdx < maxCols && grid[rIdx][cIdx] !== null) cIdx++;
                 if (cIdx >= maxCols) return;
 
-                const texts = Array.from(tc.getElementsByTagName("t")).map(t => t.textContent || "");
-                const text = texts.join(" ").replace(/\s+/g, " ").trim();
+                // Extract text preserving paragraph breaks (each <p> = one line)
+                const paragraphs = Array.from(tc.childNodes).filter(n => n.nodeName === "p");
+                let text: string;
+                if (paragraphs.length > 0) {
+                  const paraTexts = paragraphs.map(p => {
+                    const runs = Array.from(p.childNodes).filter(n => n.nodeName === "r");
+                    return runs.map(r => {
+                      const tNodes = Array.from(r.childNodes).filter(n => n.nodeName === "t");
+                      return tNodes.map(t => t.textContent || "").join("");
+                    }).join("").replace(/\s+/g, " ").trim();
+                  });
+                  // Join paragraphs with newline, collapse consecutive empty paragraphs
+                  text = paraTexts.filter((p, i) => p !== "" || (i > 0 && paraTexts[i - 1] !== "")).join("\n").trim();
+                } else {
+                  // Fallback: grab all <t> if no <p> found
+                  const texts = Array.from(tc.getElementsByTagName("t")).map(t => t.textContent || "");
+                  text = texts.join(" ").replace(/\s+/g, " ").trim();
+                }
 
                 const gsNode = tc.getElementsByTagName("gridSpan")[0];
                 const gsVal = gsNode ? (gsNode.getAttribute("w:val") || gsNode.getAttribute("val")) : null;
@@ -716,6 +732,31 @@ export default function EditorSyllabusComisionPage() {
     }
   };
 
+  const handleDeleteSyllabus = async (syllabusId: number) => {
+    if (!confirm('¿Está seguro de eliminar este Syllabus? Esta acción no se puede deshacer.')) return;
+    try {
+      await apiRequest(`/api/comision-academica/syllabus/${syllabusId}`, { method: 'DELETE' });
+      setSavedSyllabi(prev => prev.filter(s => s.id !== syllabusId));
+      if (activeSyllabusId === syllabusId) {
+        setActiveSyllabusId(null);
+        setSyllabi([]);
+      }
+      alert('Syllabus eliminado exitosamente');
+    } catch (error: any) {
+      alert(`Error al eliminar: ${error.message}`);
+    }
+  };
+
+  const handleReuploadSyllabus = (syllabusId: number) => {
+    const syl = savedSyllabi.find(s => s.id === syllabusId);
+    if (!syl) return;
+    // Cargar el syllabus existente para editarlo, luego abrir file input
+    handleLoadSyllabus(syllabusId.toString());
+    setShowSyllabusSelector(false);
+    // Pequeño delay para que el editor se monte y luego abrir el file picker
+    setTimeout(() => fileInputRef.current?.click(), 300);
+  };
+
   const handleSyllabusUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -841,6 +882,96 @@ export default function EditorSyllabusComisionPage() {
     updateProgramaAnalitico(activeSyllabus.id, { tabs: updatedTabs });
     setActiveTabId(newTab.id);
   };
+
+  // ✍️ AGREGAR PESTAÑA VISADO/FIRMAS PRE-CONSTRUIDA
+  const addVisadoTab = () => {
+    if (!activeSyllabus) return;
+    // Verificar si ya existe una pestaña VISADO
+    const yaExiste = activeSyllabus.tabs.some(t => t.title.toUpperCase().includes('VISADO'));
+    if (yaExiste) {
+      const visadoTab = activeSyllabus.tabs.find(t => t.title.toUpperCase().includes('VISADO'));
+      if (visadoTab) setActiveTabId(visadoTab.id);
+      return alert('Ya existe una pestaña de Visado/Firmas.');
+    }
+
+    const ts = Date.now();
+    const mkCell = (id: string, content: string, opts: Partial<TableCell> = {}): TableCell => ({
+      id, content, isHeader: false, rowSpan: 1, colSpan: 1, isEditable: true, textOrientation: 'horizontal', ...opts
+    });
+
+    // Obtener nombre del usuario actual y fecha actual
+    const nombreUsuario = user ? `${user.nombres || ''} ${user.apellidos || ''}`.trim() : '';
+    const fechaHoy = new Date().toLocaleDateString('es-EC', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+    const visadoRows: TableRow[] = [
+      // Fila 0: Título VISADO
+      { id: `vr-0-${ts}`, cells: [
+        mkCell(`vc-0-0-${ts}`, '3. VISADO', { isHeader: true, colSpan: 4, fontWeight: 'bold', backgroundColor: '#E8EDF2', textAlign: 'center' }),
+        mkCell(`vc-0-1-${ts}`, '', { rowSpan: 0, colSpan: 0 }),
+        mkCell(`vc-0-2-${ts}`, '', { rowSpan: 0, colSpan: 0 }),
+        mkCell(`vc-0-3-${ts}`, '', { rowSpan: 0, colSpan: 0 }),
+      ]},
+      // Fila 1: Encabezados de cargo
+      { id: `vr-1-${ts}`, cells: [
+        mkCell(`vc-1-0-${ts}`, 'ELABORADO POR:\nDOCENTE', { isHeader: true, fontWeight: 'bold', textAlign: 'center', backgroundColor: '#F3F4F6' }),
+        mkCell(`vc-1-1-${ts}`, 'REVISADO POR:\nDIRECTOR/A DE CARRERA', { isHeader: true, fontWeight: 'bold', textAlign: 'center', backgroundColor: '#F3F4F6' }),
+        mkCell(`vc-1-2-${ts}`, 'REVISADO POR:\nCOORDINADOR/A COMISIÓN ACADÉMICA', { isHeader: true, fontWeight: 'bold', textAlign: 'center', backgroundColor: '#F3F4F6' }),
+        mkCell(`vc-1-3-${ts}`, 'APROBADO POR:\nDECANO/A DE FACULTAD', { isHeader: true, fontWeight: 'bold', textAlign: 'center', backgroundColor: '#F3F4F6' }),
+      ]},
+      // Fila 2: Nombre
+      { id: `vr-2-${ts}`, cells: [
+        mkCell(`vc-2-0-${ts}`, 'Nombre:', { isHeader: true, fontWeight: 'bold', textAlign: 'center', backgroundColor: '#F9FAFB' }),
+        mkCell(`vc-2-1-${ts}`, 'Nombre:', { isHeader: true, fontWeight: 'bold', textAlign: 'center', backgroundColor: '#F9FAFB' }),
+        mkCell(`vc-2-2-${ts}`, 'Nombre:', { isHeader: true, fontWeight: 'bold', textAlign: 'center', backgroundColor: '#F9FAFB' }),
+        mkCell(`vc-2-3-${ts}`, 'Nombre:', { isHeader: true, fontWeight: 'bold', textAlign: 'center', backgroundColor: '#F9FAFB' }),
+      ]},
+      // Fila 3: Valores de nombre (el docente se auto-completa)
+      { id: `vr-3-${ts}`, cells: [
+        mkCell(`vc-3-0-${ts}`, nombreUsuario, { textAlign: 'center' }),
+        mkCell(`vc-3-1-${ts}`, '', { textAlign: 'center' }),
+        mkCell(`vc-3-2-${ts}`, '', { textAlign: 'center' }),
+        mkCell(`vc-3-3-${ts}`, '', { textAlign: 'center' }),
+      ]},
+      // Fila 4: Firma
+      { id: `vr-4-${ts}`, cells: [
+        mkCell(`vc-4-0-${ts}`, 'Firma:', { isHeader: true, fontWeight: 'bold', textAlign: 'center', backgroundColor: '#F9FAFB' }),
+        mkCell(`vc-4-1-${ts}`, 'Firma:', { isHeader: true, fontWeight: 'bold', textAlign: 'center', backgroundColor: '#F9FAFB' }),
+        mkCell(`vc-4-2-${ts}`, 'Firma:', { isHeader: true, fontWeight: 'bold', textAlign: 'center', backgroundColor: '#F9FAFB' }),
+        mkCell(`vc-4-3-${ts}`, 'Firma:', { isHeader: true, fontWeight: 'bold', textAlign: 'center', backgroundColor: '#F9FAFB' }),
+      ]},
+      // Fila 5: Espacios para firma
+      { id: `vr-5-${ts}`, cells: [
+        mkCell(`vc-5-0-${ts}`, '', { textAlign: 'center' }),
+        mkCell(`vc-5-1-${ts}`, '', { textAlign: 'center' }),
+        mkCell(`vc-5-2-${ts}`, '', { textAlign: 'center' }),
+        mkCell(`vc-5-3-${ts}`, '', { textAlign: 'center' }),
+      ]},
+      // Fila 6: Fecha
+      { id: `vr-6-${ts}`, cells: [
+        mkCell(`vc-6-0-${ts}`, 'Fecha:', { isHeader: true, fontWeight: 'bold', textAlign: 'center', backgroundColor: '#F9FAFB' }),
+        mkCell(`vc-6-1-${ts}`, 'Fecha:', { isHeader: true, fontWeight: 'bold', textAlign: 'center', backgroundColor: '#F9FAFB' }),
+        mkCell(`vc-6-2-${ts}`, 'Fecha:', { isHeader: true, fontWeight: 'bold', textAlign: 'center', backgroundColor: '#F9FAFB' }),
+        mkCell(`vc-6-3-${ts}`, 'Fecha:', { isHeader: true, fontWeight: 'bold', textAlign: 'center', backgroundColor: '#F9FAFB' }),
+      ]},
+      // Fila 7: Valores de fecha (docente se auto-completa con fecha actual)
+      { id: `vr-7-${ts}`, cells: [
+        mkCell(`vc-7-0-${ts}`, fechaHoy, { textAlign: 'center' }),
+        mkCell(`vc-7-1-${ts}`, '', { textAlign: 'center' }),
+        mkCell(`vc-7-2-${ts}`, '', { textAlign: 'center' }),
+        mkCell(`vc-7-3-${ts}`, '', { textAlign: 'center' }),
+      ]},
+    ];
+
+    const visadoTab: TabData = {
+      id: `tab-visado-${ts}`,
+      title: 'Visado',
+      rows: visadoRows,
+    };
+
+    const updatedTabs = [...activeSyllabus.tabs, visadoTab];
+    updateProgramaAnalitico(activeSyllabus.id, { tabs: updatedTabs });
+    setActiveTabId(visadoTab.id);
+  };
   
   const removeTab = (tabIdToRemove: string) => {
     if (!activeSyllabus) return;
@@ -919,304 +1050,258 @@ export default function EditorSyllabusComisionPage() {
   const handlePrintToPdf = async () => { 
     if(!activeSyllabus) return;
 
+    try {
+
+    // Usar orientación landscape para más espacio horizontal
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const marginL = 10;
-    const marginR = 10;
-    const contentWidth = pageWidth - marginL - marginR;
 
-    // --- LOGO ---
+    // Cargar el logo de la universidad
+    let logoImg: HTMLImageElement | null = null;
     try {
-      const logoImg = new Image();
+      logoImg = new Image();
       logoImg.crossOrigin = 'anonymous';
       await new Promise<void>((resolve, reject) => {
-        logoImg.onload = () => resolve();
-        logoImg.onerror = () => reject();
-        logoImg.src = '/images/unesum-logo-official.png';
+        logoImg!.onload = () => resolve();
+        logoImg!.onerror = () => reject(new Error('No se pudo cargar el logo'));
+        logoImg!.src = '/images/unesum-logo-official.png';
       });
-      doc.addImage(logoImg, 'PNG', marginL, 3, 12, 12);
-    } catch { /* logo no disponible */ }
+    } catch (e) {
+      console.warn('⚠️ No se pudo cargar el logo para el PDF:', e);
+      logoImg = null;
+    }
 
-    // --- ENCABEZADO ---
+    // Iterar sobre TODAS las pestañas para incluirlas en el mismo PDF (CONTINUO)
+    const allTabs = activeSyllabus.tabs;
+    const marginL = 10;
+    const marginR = 10;
+    console.log(`📄 PDF: Generando PDF con ${allTabs.length} pestañas`);
+
+    // --- Encabezado solo en la primera página ---
+    if (logoImg) {
+      try { doc.addImage(logoImg, 'PNG', 12, 3, 20, 20); } catch(e) { /* ignore */ }
+    }
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("UNIVERSIDAD ESTATAL DEL SUR DE MANABÍ", pageWidth / 2, 8, { align: 'center' });
+    doc.setFontSize(12);
+    doc.text("SYLLABUS DE ASIGNATURA", pageWidth / 2, 14, { align: 'center' });
     doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text('UNIVERSIDAD ESTATAL DEL SUR DE MANABÍ', pageWidth / 2, 6, { align: 'center' });
-    doc.setFontSize(8);
-    doc.text('SYLLABUS DE ASIGNATURA', pageWidth / 2, 11, { align: 'center' });
-    doc.setFontSize(7);
-    doc.setFont('helvetica', 'normal');
-    doc.text(activeSyllabus.name || '', pageWidth / 2, 15, { align: 'center' });
+    doc.setFont("helvetica", "normal");
+    doc.text(activeSyllabus.name || '', pageWidth / 2, 20, { align: 'center' });
 
-    let currentY = 19;
+    let currentY = 26;
 
-    // Helper: detectar si es la primera sección (datos generales)
-    const isFirstSectionTab = (title: string) => {
-      const t = title.toUpperCase();
-      return t.includes('GENERAL') || t.includes('INFORMACIÓN') || t.includes('DATOS') || t.includes('INFORMACION');
-    };
+    for (let tabIdx = 0; tabIdx < allTabs.length; tabIdx++) {
+      const tab = allTabs[tabIdx];
+      if (!tab || tab.rows.length === 0) continue;
 
-    // --- GENERAR CONTENIDO POR CADA PESTAÑA ---
-    for (const tab of activeSyllabus.tabs) {
-      if (!tab.rows || tab.rows.length === 0) continue;
+      console.log(`📄 PDF Tab ${tabIdx + 1}: "${tab.title}" con ${tab.rows.length} filas`);
 
-      // Nueva página si no hay espacio suficiente
-      if (currentY + 15 > pageHeight - 12) { doc.addPage(); currentY = 12; }
+      const isVisadoTab = tab.title.toUpperCase().includes('VISADO') || tab.title.toUpperCase().includes('LEGALIZACIÓN');
 
-      // Título de sección con estilo profesional
-      currentY += 3; // espacio antes del título
-      doc.setFontSize(8.5);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(25, 50, 95); // azul oscuro
-      doc.text(tab.title.toUpperCase(), marginL, currentY);
-      // Línea decorativa debajo del título
-      currentY += 1;
-      doc.setDrawColor(25, 50, 95);
-      doc.setLineWidth(0.4);
-      doc.line(marginL, currentY, marginL + contentWidth, currentY);
-      currentY += 2;
+      // Nueva página SOLO si no hay espacio suficiente
+      const spaceNeeded = isVisadoTab ? 50 : 15;
+      if (currentY + spaceNeeded > pageHeight - 10) { doc.addPage(); currentY = 12; }
 
-      const isFirstSection = isFirstSectionTab(tab.title);
+      // Título de sección si hay más de 1 tab
+      if (allTabs.length > 1) {
+        currentY += 2;
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(25, 50, 95);
+        doc.text(tab.title.toUpperCase(), marginL, currentY);
+        currentY += 1;
+        doc.setDrawColor(25, 50, 95);
+        doc.setLineWidth(0.3);
+        doc.line(marginL, currentY, pageWidth - marginR, currentY);
+        currentY += 2;
+      }
 
-      if (isFirstSection) {
-        // ======= PRIMERA SECCIÓN: Reconstruir como tabla limpia de 3 columnas =======
-        // Esto evita que los colSpan subyacentes compriman las columnas de valor
-        const cleanRows: any[][] = [];
+      // --- Construir body ---
+      const isMainSection = !isVisadoTab && tabIdx === 0;
 
-        for (const row of tab.rows) {
+      try {
+
+      if (isMainSection) {
+        // ======= SECCIÓN PRINCIPAL: tabla limpia de 2 columnas (label | valor) =======
+        const contentWidth = pageWidth - marginL - marginR;
+        const cleanBody: any[][] = [];
+
+        for (let r = 0; r < tab.rows.length; r++) {
+          const row = tab.rows[r];
           const visible = row.cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
           if (visible.length === 0) continue;
 
-          if (visible.length === 1) {
-            // Fila con una sola celda: título/header que abarca todo
+          // Fila con 1 celda que abarca toda la fila → título
+          if (visible.length === 1 && (visible[0].colSpan || 1) >= 3) {
             const txt = (visible[0].content || '').trim();
             if (!txt) continue;
-            cleanRows.push([{
-              content: txt, colSpan: 3,
-              styles: { fontStyle: 'bold' as const, fillColor: '#E5E7EB', halign: 'left' as const, fontSize: 6 }
+            cleanBody.push([{
+              content: txt, colSpan: 2,
+              styles: { fontStyle: 'bold' as const, fillColor: '#E5E7EB', halign: 'center' as const, fontSize: 9, cellPadding: 3 }
             }]);
-          } else {
-            // Separar en: label, separador, valor(es)
-            let label = '';
-            let sep = '';
-            let values: string[] = [];
+            continue;
+          }
 
-            for (let ci = 0; ci < visible.length; ci++) {
-              const txt = (visible[ci].content || '').trim();
-              const isSep = txt === ':' || (txt.length <= 2 && txt.length > 0 && !/[a-zA-Z0-9]/.test(txt));
-              
-              if (ci === 0) { label = txt; }
-              else if (isSep && !sep) { sep = txt; }
-              else { values.push(txt); }
+          // Fila con 1 celda sola → valor de un rowSpan previo
+          if (visible.length === 1) {
+            const txt = (visible[0].content || '').trim();
+            if (txt) {
+              cleanBody.push([
+                { content: '', styles: { fillColor: '#F9FAFB' } },
+                { content: txt, styles: { fillColor: '#FFFFFF', halign: 'left' as const } },
+              ]);
+            }
+            continue;
+          }
+
+          // Fila con 2 celdas: label + valor
+          if (visible.length === 2) {
+            const label = (visible[0].content || '').trim();
+            let value = (visible[1].content || '').trim();
+
+            // Auto-llenado para ASIGNATURA, NIVEL, PERIODO
+            if (r <= 5 && asignaturaInfo) {
+              const etiqueta = label.toUpperCase();
+              if (etiqueta === 'ASIGNATURA' && !value) {
+                value = `${asignaturaInfo.codigo || ''} - ${asignaturaInfo.nombre || ''}`;
+              } else if ((etiqueta.includes('PERIODO') || etiqueta === 'PAO') && !value) {
+                const periodoNombre = periodos.find((p: any) => p.id?.toString() === selectedPeriod)?.nombre || selectedPeriod;
+                value = formatPeriodoSimple(periodoNombre) || '';
+              } else if (etiqueta === 'NIVEL' && !value) {
+                value = asignaturaInfo.nivel?.nombre || '';
+              }
             }
 
-            const valueTxt = values.join(' ').trim();
-
-            cleanRows.push([
+            cleanBody.push([
               { content: label, styles: { fontStyle: 'bold' as const, fillColor: '#F9FAFB', halign: 'left' as const } },
-              { content: sep || ':', styles: { halign: 'center' as const, fillColor: '#FFFFFF' } },
-              { content: valueTxt, styles: { fontStyle: 'normal' as const, fillColor: '#FFFFFF', halign: 'left' as const } },
+              { content: value, styles: { fontStyle: 'normal' as const, fillColor: '#FFFFFF', halign: 'left' as const } },
             ]);
+            continue;
+          }
+
+          // Fila con 3 celdas: label + sub-label + valor
+          if (visible.length === 3) {
+            const label = (visible[0].content || '').trim();
+            const subLabel = (visible[1].content || '').trim();
+            const value = (visible[2].content || '').trim();
+
+            // Si subLabel es solo ":" o separador, combinar label y value
+            const isSep = subLabel === ':' || (subLabel.length <= 2 && subLabel.length > 0 && !/[a-zA-Z0-9]/.test(subLabel));
+            if (isSep) {
+              cleanBody.push([
+                { content: label, styles: { fontStyle: 'bold' as const, fillColor: '#F9FAFB', halign: 'left' as const } },
+                { content: value, styles: { fontStyle: 'normal' as const, fillColor: '#FFFFFF', halign: 'left' as const } },
+              ]);
+            } else if (label) {
+              cleanBody.push([
+                { content: label, styles: { fontStyle: 'bold' as const, fillColor: '#F9FAFB', halign: 'left' as const } },
+                { content: `${subLabel}${subLabel && value ? ': ' : ''}${value}`, styles: { fillColor: '#FFFFFF', halign: 'left' as const } },
+              ]);
+            } else {
+              cleanBody.push([
+                { content: subLabel, styles: { fontStyle: 'bold' as const, fillColor: '#F9FAFB', halign: 'left' as const } },
+                { content: value, styles: { fillColor: '#FFFFFF', halign: 'left' as const } },
+              ]);
+            }
+            continue;
+          }
+
+          // Fila con 4+ celdas → split into 2-column pairs
+          if (visible.length >= 4) {
+            for (let ci = 0; ci < visible.length - 1; ci += 2) {
+              const label = (visible[ci].content || '').trim();
+              let value = (visible[ci + 1]?.content || '').trim();
+
+              if (r <= 5 && asignaturaInfo) {
+                const etiqueta = label.toUpperCase();
+                if (etiqueta === 'ASIGNATURA' && !value) {
+                  value = `${asignaturaInfo.codigo || ''} - ${asignaturaInfo.nombre || ''}`;
+                } else if ((etiqueta.includes('PERIODO') || etiqueta === 'PAO') && !value) {
+                  const periodoNombre = periodos.find((p: any) => p.id?.toString() === selectedPeriod)?.nombre || selectedPeriod;
+                  value = formatPeriodoSimple(periodoNombre) || '';
+                } else if (etiqueta === 'NIVEL' && !value) {
+                  value = asignaturaInfo.nivel?.nombre || '';
+                }
+              }
+
+              if (label || value) {
+                cleanBody.push([
+                  { content: label, styles: { fontStyle: 'bold' as const, fillColor: '#F9FAFB', halign: 'left' as const } },
+                  { content: value, styles: { fillColor: '#FFFFFF', halign: 'left' as const } },
+                ]);
+              }
+            }
+            continue;
           }
         }
 
-        if (cleanRows.length > 0) {
-          // Anchos: label=30%, sep=2%, valor=68% del contentWidth
-          const labelW = contentWidth * 0.30;
-          const sepW = contentWidth * 0.02;
-          const valW = contentWidth * 0.68;
+        if (cleanBody.length > 0) {
+          const contentWidth2 = pageWidth - marginL - marginR;
+          const labelW = contentWidth2 * 0.28;
+          const valW = contentWidth2 * 0.72;
 
           autoTable(doc, {
-            body: cleanRows as any,
+            body: cleanBody as any,
             startY: currentY,
             theme: 'grid',
             columnStyles: {
               0: { cellWidth: labelW },
-              1: { cellWidth: sepW },
-              2: { cellWidth: valW },
+              1: { cellWidth: valW },
             },
             styles: {
-              fontSize: 5.5,
-              cellPadding: { top: 0.5, right: 1, bottom: 0.5, left: 1 },
+              fontSize: 7,
+              cellPadding: { top: 1.5, right: 2, bottom: 1.5, left: 2 },
               lineColor: '#9CA3AF',
-              lineWidth: 0.15,
+              lineWidth: 0.2,
               overflow: 'linebreak',
               halign: 'left',
               valign: 'top',
               textColor: '#1F2937',
             },
             margin: { left: marginL, right: marginR },
-            tableWidth: contentWidth,
+            tableWidth: contentWidth2,
           });
-
           currentY = (doc as any).lastAutoTable?.finalY || (doc as any).previousAutoTable?.finalY || currentY + 10;
-          currentY += 4; // más espacio entre secciones
+          currentY += 4;
         }
+
       } else {
-        // ======= SECCIONES NORMALES: renderizar fiel con rowSpan/colSpan =======
-
-        // PASO 1: Identificar el header - buscar la fila que tiene el flag isHeader=true
-        // en ALL sus celdas visibles Y cuyo texto promedio es corto (títulos de columna)
-        let headerRowIdx = -1;
-        for (let ri = 0; ri < tab.rows.length; ri++) {
-          const vis = tab.rows[ri].cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
-          if (vis.length < 3) continue;
-          const allAreHeader = vis.every(c => c.isHeader);
-          const avgLen = vis.reduce((sum, c) => sum + (c.content || '').trim().length, 0) / vis.length;
-          // Header real: todas marcadas isHeader Y texto promedio corto (<=40 chars = títulos)
-          if (allAreHeader && avgLen <= 40) { headerRowIdx = ri; break; }
-        }
-        // Fallback: si no encontró por isHeader, usar la primera fila con 3+ celdas
-        if (headerRowIdx === -1) {
-          for (let ri = 0; ri < tab.rows.length; ri++) {
-            const vis = tab.rows[ri].cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
-            if (vis.length >= 3) { headerRowIdx = ri; break; }
-          }
-        }
-
-        // PASO 2: Determinar columnas lógicas - usar las filas de DATOS (no header)
-        // El header puede tener colSpans que inflan el conteo con columnas fantasma
-        const colCounts: number[] = [];
-        for (let ri = 0; ri < tab.rows.length; ri++) {
-          if (ri === headerRowIdx) continue; // saltar header
-          const vis = tab.rows[ri].cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
-          if (vis.length === 0) continue;
-          const logCols = vis.reduce((sum, c) => sum + (c.colSpan || 1), 0);
-          colCounts.push(logCols);
-        }
-        // Usar la MODA (el valor más frecuente) como número real de columnas
-        let maxLogCols = 0;
-        if (colCounts.length > 0) {
-          const freq: Record<number, number> = {};
-          for (const n of colCounts) freq[n] = (freq[n] || 0) + 1;
-          let bestCount = 0;
-          for (const [cols, count] of Object.entries(freq)) {
-            if (count > bestCount) { bestCount = count; maxLogCols = Number(cols); }
-          }
-        }
-        // Fallback: si no hay datos, usar el header
-        if (maxLogCols === 0 && headerRowIdx >= 0) {
-          const hdrVis = tab.rows[headerRowIdx].cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
-          maxLogCols = hdrVis.reduce((sum, c) => sum + (c.colSpan || 1), 0);
-        }
-
-        // PASO 3: Detectar tipos de columna desde el header
-        type ColType = 'unidad' | 'contenido' | 'horas' | 'pfae' | 'metodologia' | 'recursos' | 'escenario' | 'biblio' | 'fecha' | 'separator' | 'resultado' | 'criterio' | 'instrumento' | 'other';
-        const colTypeMap: Record<number, ColType> = {};
-
-        if (headerRowIdx >= 0) {
-          const hdrCells = tab.rows[headerRowIdx].cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
-          let colIdx = 0;
-          for (const hc of hdrCells) {
-            const txt = (hc.content || '').trim().toUpperCase();
-            const isSep = txt === ':' || (txt.length <= 2 && txt.length > 0 && !/[A-Z0-9]/.test(txt));
-            const span = hc.colSpan || 1;
-
-            let type: ColType = 'other';
-            if (isSep) type = 'separator';
-            else if (txt.includes('UNIDAD') || txt.includes('TEMÁT') || txt.includes('TEMAT')) type = 'unidad';
-            else if (txt.includes('CONTENIDO')) type = 'contenido';
-            else if (txt.includes('PRESENCIAL') || txt.includes('SINCRÓNIC') || txt.includes('SINCRONIC')) type = 'horas';
-            else if (txt === 'PFAE' || txt === 'TA') type = 'pfae';
-            else if (txt.includes('METODOLOG') || txt.includes('ENSEÑANZA')) type = 'metodologia';
-            else if (txt.includes('RECURSO') || txt.includes('DIDÁCTICO') || txt.includes('DIDACTICO')) type = 'recursos';
-            else if (txt.includes('ESCENARIO')) type = 'escenario';
-            else if (txt.includes('BIBLIOGRAF') || txt.includes('FUENTE') || txt.includes('CONSULTA')) type = 'biblio';
-            else if (txt.includes('FECHA') || txt.includes('PARALELO')) type = 'fecha';
-            else if (txt.includes('RESULTADO') || txt.includes('APRENDIZAJE')) type = 'resultado';
-            else if (txt.includes('CRITERIO')) type = 'criterio';
-            else if (txt.includes('INSTRUMENTO')) type = 'instrumento';
-
-            for (let s = 0; s < span && (colIdx + s) < maxLogCols; s++) {
-              colTypeMap[colIdx + s] = type;
-            }
-            colIdx += span;
-          }
-        }
-
-        // PASO 4: Calcular anchos proporcionales
-        const widthByType: Record<ColType, number> = {
-          unidad: 24,        contenido: 50,
-          horas: 13,         pfae: 9,
-          metodologia: 24,   recursos: 55,
-          escenario: 20,     biblio: 38,
-          fecha: 26,         separator: 3,
-          resultado: 42,     criterio: 36,
-          instrumento: 32,   other: 28,
-        };
-
-        const colWidthMap: Record<number, number> = {};
-        let totalAssigned = 0;
-        for (let i = 0; i < maxLogCols; i++) {
-          totalAssigned += widthByType[colTypeMap[i] || 'other'];
-        }
-        if (totalAssigned > 0) {
-          const scaleF = contentWidth / totalAssigned;
-          for (let i = 0; i < maxLogCols; i++) {
-            colWidthMap[i] = Math.round(widthByType[colTypeMap[i] || 'other'] * scaleF * 10) / 10;
-          }
-        }
-
-        // PASO 5: Construir body (todo va al body para evitar que rowSpan del header se coma filas)
+        // ======= VISADO y OTRAS SECCIONES: rowSpan/colSpan directo =======
         const body: any[][] = [];
 
-        for (let ri = 0; ri < tab.rows.length; ri++) {
-          const row = tab.rows[ri];
+        for (let r = 0; r < tab.rows.length; r++) {
+          const row = tab.rows[r];
           const pdfRow: any[] = [];
-          const visibleCells = row.cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
-          if (visibleCells.length === 0) continue;
 
-          // Header detectado: estilo diferente, rowSpan forzado a 1
-          const isRealHeader = (ri === headerRowIdx);
+          for (let c = 0; c < row.cells.length; c++) {
+            const cell = row.cells[c];
+            if (cell.rowSpan === 0 || cell.colSpan === 0) continue;
 
-          let currentLogCol = 0;
-          for (const cell of visibleCells) {
-            let content = (cell.content || '').replace(/\r\n/g, '\n');
-            const contentUp = content.trim().toUpperCase();
-            const isVert = cell.textOrientation === 'vertical';
-
-            // Para bibliografías: forzar saltos de línea
-            if (!isVert && !isRealHeader && content.includes('B.') && !content.includes('\n')) {
-              content = content.replace(/\s+(B\.)/g, '\n$1');
+            let content = cell.content || '';
+            if (cell.textOrientation === 'vertical' && content) {
+              content = content.split('').join('\n');
             }
-
-            // Abreviar headers verticales
-            let displayContent = content;
-            if (isVert && isRealHeader) {
-              if (contentUp.includes('METODOLOG')) displayContent = 'Metodología';
-              else if (contentUp.includes('ESCENARIO')) displayContent = 'Escenario';
-              else if (contentUp.includes('PRESENCIAL')) displayContent = 'HD.\nPresencial';
-              else if (contentUp.includes('SINCRÓNIC') || contentUp.includes('SINCRONIC')) displayContent = 'HD.\nSincrónica';
-            }
-
-            // Limitar colSpan al máximo real
-            let cellSpan = cell.colSpan || 1;
-            if (currentLogCol + cellSpan > maxLogCols) {
-              cellSpan = Math.max(1, maxLogCols - currentLogCol);
-            }
-
-            // CLAVE: Forzar rowSpan=1 para el header para evitar que se coma la primera fila de datos
-            const safeRowSpan = isRealHeader ? 1 : (cell.rowSpan || 1);
 
             pdfRow.push({
-              content: displayContent,
-              rowSpan: safeRowSpan,
-              colSpan: cellSpan,
+              content: content,
+              rowSpan: cell.rowSpan || 1,
+              colSpan: cell.colSpan || 1,
               styles: {
-                fontStyle: isRealHeader ? 'bold' as const : 'normal' as const,
-                fillColor: isRealHeader ? '#E8EDF2' : (cell.backgroundColor || '#FFFFFF'),
-                textColor: isRealHeader ? '#1E3A5F' : '#1F2937',
-                fontSize: isRealHeader ? 5.5 : 6,
-                cellPadding: isRealHeader 
-                  ? { top: 1.5, right: 1, bottom: 1.5, left: 1 }
-                  : { top: 0.8, right: 0.8, bottom: 0.8, left: 0.8 },
-                halign: isRealHeader ? 'center' as const : 'left' as const,
-                valign: isRealHeader ? 'middle' as const : 'top' as const,
-                minCellHeight: isRealHeader ? 6 : 3,
-                overflow: 'linebreak' as const,
+                fontStyle: cell.isHeader ? 'bold' : 'normal',
+                fillColor: isVisadoTab ? '#FFFFFF' : (cell.backgroundColor || (cell.isHeader ? '#E5E7EB' : '#FFFFFF')),
+                textColor: isVisadoTab ? '#000000' : (cell.textColor || '#1F2937'),
+                fontSize: isVisadoTab ? 7 : (cell.textOrientation === 'vertical' ? 6 : 8),
+                cellPadding: isVisadoTab ? 3 : 2,
+                halign: isVisadoTab ? 'center' : (cell.isHeader ? 'center' : (cell.textAlign as any || 'left')),
+                valign: 'middle',
+                minCellHeight: isVisadoTab ? 16 : (cell.textOrientation === 'vertical' ? 30 : 8),
+                cellWidth: cell.textOrientation === 'vertical' ? 10 : 'auto',
+                overflow: 'linebreak',
               }
             });
-            currentLogCol += cellSpan;
           }
 
           if (pdfRow.length > 0) {
@@ -1224,93 +1309,43 @@ export default function EditorSyllabusComisionPage() {
           }
         }
 
-        if (body.length > 0) {
-          // Construir columnStyles
-          const colStyles: Record<number, { cellWidth: number }> = {};
-          for (let i = 0; i < maxLogCols; i++) {
-            if (colWidthMap[i]) colStyles[i] = { cellWidth: colWidthMap[i] };
-          }
+        if (body.length === 0) continue;
 
-          autoTable(doc, {
-            body: body as any,
-            startY: currentY,
-            theme: 'grid',
-            styles: {
-              fontSize: 6,
-              cellPadding: { top: 0.8, right: 0.8, bottom: 0.8, left: 0.8 },
-              lineColor: '#9CA3AF',
-              lineWidth: 0.15,
-              overflow: 'linebreak',
-              halign: 'left',
-              valign: 'top',
-            },
-            columnStyles: colStyles,
-            margin: { left: marginL, right: marginR },
-            tableWidth: contentWidth,
-          });
-
-          currentY = (doc as any).lastAutoTable?.finalY || (doc as any).previousAutoTable?.finalY || currentY + 10;
-          currentY += 4;
-        }
+        autoTable(doc, {
+          body: body as any,
+          startY: currentY,
+          theme: 'grid',
+          styles: {
+            fontSize: isVisadoTab ? 7 : 8,
+            cellPadding: isVisadoTab ? 3 : 2,
+            lineColor: '#9CA3AF',
+            lineWidth: 0.3,
+            overflow: 'linebreak',
+          },
+          headStyles: {
+            fillColor: '#E5E7EB',
+            textColor: '#1F2937',
+            fontStyle: 'bold',
+          },
+          margin: { left: 10, right: 10 },
+          tableWidth: 'auto',
+        });
+        currentY = (doc as any).lastAutoTable?.finalY || (doc as any).previousAutoTable?.finalY || currentY + 10;
+        currentY += 4;
       }
-    }
 
-    // --- FIRMAS ---
-    const cargos = [
-      { cargo: 'DECANO/A DE FACULTAD', nombre: '', patrones: ['DECANO'] },
-      { cargo: 'DIRECTOR/A ACADÉMICO/A', nombre: '', patrones: ['DIRECTOR'] },
-      { cargo: 'COORDINADOR/A DE CARRERA', nombre: '', patrones: ['COORDINADOR'] },
-      { cargo: 'DOCENTE', nombre: '', patrones: ['DOCENTE'] },
-    ];
-
-    // Buscar nombres en las pestañas
-    for (const tab of activeSyllabus.tabs) {
-      for (const row of tab.rows) {
-        for (let c = 0; c < row.cells.length; c++) {
-          const texto = (row.cells[c].content || '').trim().toUpperCase();
-          if (!texto || texto.length < 4) continue;
-          for (const cargoObj of cargos) {
-            if (cargoObj.nombre) continue;
-            if (!cargoObj.patrones.some(p => texto.includes(p))) continue;
-            const lineas = row.cells[c].content.split('\n').map(l => l.trim()).filter(l => l.length > 3);
-            if (lineas.length >= 2) {
-              const nombre = lineas.find(l => !cargoObj.patrones.some(p => l.toUpperCase().includes(p)));
-              if (nombre) { cargoObj.nombre = nombre; continue; }
-            }
-            if (c + 1 < row.cells.length) {
-              const next = (row.cells[c + 1].content || '').trim();
-              if (next.length > 3 && !cargoObj.patrones.some(p => next.toUpperCase().includes(p))) cargoObj.nombre = next;
-            }
-          }
-        }
+      } catch (tabError) {
+        console.error(`⚠️ PDF ERROR en pestaña "${tab.title}":`, tabError);
+        console.error('Stack:', (tabError as any)?.stack);
       }
-    }
-
-    let firmaY = currentY + 15;
-    if (firmaY + 40 > pageHeight) { doc.addPage(); firmaY = 25; }
-
-    const marginLeft = 15;
-    const usableWidth = pageWidth - 30;
-    const colWidth = usableWidth / 4;
-    const lineLength = colWidth - 15;
-
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.text('FIRMAS DE RESPONSABILIDAD', pageWidth / 2, firmaY, { align: 'center' });
-    firmaY += 12;
-
-    for (let i = 0; i < cargos.length; i++) {
-      const x = marginLeft + (colWidth * i) + (colWidth / 2);
-      doc.setLineWidth(0.4);
-      doc.line(x - lineLength / 2, firmaY, x + lineLength / 2, firmaY);
-      doc.setFontSize(6.5);
-      doc.setFont('helvetica', 'normal');
-      doc.text(cargos[i].nombre || '________________________', x, firmaY + 4, { align: 'center', maxWidth: lineLength });
-      doc.setFont('helvetica', 'bold');
-      doc.text(cargos[i].cargo, x, firmaY + 10, { align: 'center', maxWidth: lineLength });
     }
 
     doc.save(`Syllabus_${activeSyllabus.name}.pdf`);
+
+    } catch (globalError) {
+      console.error('❌ ERROR GLOBAL en generación PDF:', globalError);
+      alert('Error al generar PDF. Revisa la consola (F12) para más detalles.');
+    }
   }
 
   const formatPeriodoSimple = (periodoIdOrName: string) => {
@@ -1346,28 +1381,35 @@ export default function EditorSyllabusComisionPage() {
 
   return (
     <ProtectedRoute allowedRoles={["administrador", "comision_academica", "profesor"]}>
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-slate-50 to-gray-100">
         <MainHeader />
-        <main className="max-w-7xl mx-auto px-6 py-8">
+        <main className={`mx-auto py-5 ${activeSyllabus ? 'max-w-[98vw] px-4' : 'max-w-7xl px-6'}`}>
           
           {!activeSyllabus ? (
             <>
-              <Card className="mb-6 border-t-4 border-t-emerald-600">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between text-emerald-800">
-                    <span>Editor de Syllabus - Comisión Académica</span>
-                    <div className="flex gap-2">
-                      <Button onClick={() => setShowSyllabusSelector(true)} className="bg-emerald-600 hover:bg-emerald-700">
-                        <Plus className="h-4 w-4 mr-2" /> Nuevo
-                      </Button>
+              <Card className="mb-5 overflow-hidden border border-gray-100 shadow-[0_2px_12px_rgba(0,0,0,0.04)] rounded-2xl animate-fade-in-up">
+                <div className="syllabus-accent-bar" />
+                <CardHeader className="pb-2 pt-4">
+                  <CardTitle className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl shadow-sm">
+                        <BookOpen className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-bold text-gray-800">Editor de Syllabus</h2>
+                        <p className="text-[11px] text-gray-400 font-normal mt-0.5">Comisión Académica</p>
+                      </div>
                     </div>
+                    <Button onClick={() => setShowSyllabusSelector(true)} className="rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-sm hover:shadow-md transition-all h-9 px-4">
+                      <Plus className="h-4 w-4 mr-2" /> Nuevo Syllabus
+                    </Button>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="w-1/2 space-y-2">
-                    <Label>Periodo</Label>
+                    <Label className="text-sm font-medium text-gray-600 flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" /> Periodo Académico</Label>
                     <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-                      <SelectTrigger><SelectValue placeholder="Seleccione el periodo" /></SelectTrigger>
+                      <SelectTrigger className="border-gray-200 focus:ring-emerald-500 focus:border-emerald-500"><SelectValue placeholder="Seleccione el periodo" /></SelectTrigger>
                       <SelectContent>
                         {periodos.map((periodo) => (
                           <SelectItem key={periodo.id} value={periodo.id.toString()}>{periodo.nombre}</SelectItem>
@@ -1379,32 +1421,43 @@ export default function EditorSyllabusComisionPage() {
               </Card>
 
               {showSyllabusSelector && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                  <Card className="w-full max-w-3xl max-h-[80vh] overflow-y-auto">
-                    <CardHeader>
+                <div className="fixed inset-0 bg-black/30 backdrop-blur-[6px] flex items-center justify-center z-50 p-4 animate-fade-in-up">
+                  <Card className="w-full max-w-3xl max-h-[80vh] overflow-hidden shadow-2xl border border-gray-100 rounded-2xl">
+                    <div className="syllabus-accent-bar" />
+                    <CardHeader className="bg-gradient-to-b from-gray-50/80 to-white pb-3 pt-4">
                       <CardTitle className="flex items-center justify-between">
-                        <span>Seleccionar Syllabus</span>
-                        <Button variant="ghost" size="icon" onClick={() => setShowSyllabusSelector(false)}><X className="h-5 w-5" /></Button>
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2 bg-emerald-100 rounded-xl"><BookOpen className="h-4 w-4 text-emerald-700" /></div>
+                          <span className="text-gray-800 font-semibold">Seleccionar Syllabus</span>
+                        </div>
+                        <Button variant="ghost" size="icon" onClick={() => setShowSyllabusSelector(false)} className="rounded-full hover:bg-gray-100 h-8 w-8"><X className="h-4 w-4" /></Button>
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-4">
-                      <Button onClick={() => fileInputRef.current?.click()} className="w-full bg-emerald-600 hover:bg-emerald-700" disabled={isLoading}>
-                        {isLoading ? "Procesando..." : <><Upload className="h-4 w-4 mr-2" /> Subir Nuevo Word (.docx)</>}
+                    <CardContent className="space-y-4 overflow-y-auto max-h-[calc(80vh-80px)] syllabus-scroll">
+                      <Button onClick={() => fileInputRef.current?.click()} className="w-full rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-sm h-11 text-sm" disabled={isLoading}>
+                        {isLoading ? <span className="flex items-center gap-2"><span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Procesando...</span> : <><Upload className="h-4 w-4 mr-2" /> Subir Nuevo Word (.docx)</>}
                       </Button>
                       <input ref={fileInputRef} type="file" accept=".docx" onChange={(e) => { handleSyllabusUpload(e); setShowSyllabusSelector(false); }} className="hidden" />
                       
-                      <div className="border-t pt-4">
-                        <h3 className="font-semibold mb-3">O seleccione uno existente:</h3>
-                        {isListLoading ? <p className="text-center py-4">Cargando...</p> : savedSyllabi.length > 0 ? (
-                          <div className="space-y-2 max-h-96 overflow-y-auto">
+                      <div className="border-t border-gray-100 pt-4">
+                        <h3 className="font-semibold mb-3 text-gray-700 text-sm flex items-center gap-1.5"><FileText className="h-4 w-4 text-emerald-600" /> O seleccione uno existente:</h3>
+                        {isListLoading ? <div className="flex items-center justify-center py-8"><span className="h-6 w-6 border-2 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" /></div> : savedSyllabi.length > 0 ? (
+                          <div className="space-y-2 max-h-96 overflow-y-auto syllabus-scroll">
                             {savedSyllabi.map(s => (
-                              <div key={s.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                                <div><p className="font-medium">{s.nombre}</p><p className="text-sm text-gray-500">{s.periodo} - {s.materias}</p></div>
-                                <Button onClick={() => { handleLoadSyllabus(s.id.toString()); setShowSyllabusSelector(false); }} className="bg-emerald-600">Seleccionar</Button>
+                              <div key={s.id} className="syllabus-list-item flex items-center justify-between p-3 border border-gray-100 rounded-2xl hover:bg-emerald-50/40 hover:border-emerald-200/60 gap-2 group">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium truncate text-gray-800 group-hover:text-emerald-800 transition-colors text-[13px]">{s.nombre}</p>
+                                  <p className="text-[11px] text-gray-400 mt-0.5">{s.periodo} - {s.materias}</p>
+                                </div>
+                                <div className="flex gap-1.5 flex-shrink-0">
+                                  <Button onClick={() => { handleLoadSyllabus(s.id.toString()); setShowSyllabusSelector(false); }} className="rounded-xl bg-emerald-600 hover:bg-emerald-700 shadow-sm h-8" size="sm">Seleccionar</Button>
+                                  <Button variant="outline" size="sm" onClick={() => handleReuploadSyllabus(s.id)} className="rounded-xl text-blue-600 hover:text-blue-700 hover:bg-blue-50 h-8" title="Actualizar con nuevo Word"><Upload className="h-3.5 w-3.5" /></Button>
+                                  <Button variant="outline" size="sm" onClick={() => handleDeleteSyllabus(s.id)} className="rounded-xl text-red-500 hover:text-red-700 hover:bg-red-50 h-8" title="Eliminar"><Trash2 className="h-3.5 w-3.5" /></Button>
+                                </div>
                               </div>
                             ))}
                           </div>
-                        ) : <p className="text-center text-gray-500 py-4">No hay Syllabus para este periodo</p>}
+                        ) : <div className="text-center py-8 empty-pattern rounded-xl"><FileText className="h-10 w-10 text-gray-300 mx-auto mb-2" /><p className="text-gray-400 text-sm">No hay Syllabus para este periodo</p></div>}
                       </div>
                     </CardContent>
                   </Card>
@@ -1413,81 +1466,213 @@ export default function EditorSyllabusComisionPage() {
             </>
           ) : (
             <>
-              <Card className="mb-6 border-t-4 border-t-emerald-600">
-                <CardHeader>
-                  <CardTitle className="flex flex-wrap items-center justify-between gap-4 text-emerald-800">
-                    <span className="truncate">{activeSyllabus.name}</span>
+              <Card className="mb-5 overflow-hidden border border-gray-100 shadow-[0_2px_12px_rgba(0,0,0,0.04)] rounded-2xl animate-fade-in-up">
+                <div className="syllabus-accent-bar" />
+                <CardHeader className="pb-3 pt-4">
+                  <CardTitle className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="p-2.5 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl shadow-sm flex-shrink-0">
+                        <GraduationCap className="h-5 w-5 text-white" />
+                      </div>
+                      <div className="min-w-0">
+                        <h2 className="text-lg font-bold text-gray-800 truncate">{activeSyllabus.name}</h2>
+                        <div className="flex items-center gap-2 mt-1">
+                          {asignaturaInfo && <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-full border border-emerald-200"><BookOpen className="h-3 w-3" />{asignaturaInfo.nombre}</span>}
+                          {selectedPeriod && <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-medium rounded-full border border-blue-200"><Calendar className="h-3 w-3" />{formatPeriodoSimple(selectedPeriod)}</span>}
+                        </div>
+                      </div>
+                    </div>
                     <div className="flex gap-2">
-                       <Button onClick={() => { setActiveSyllabusId(null); setSyllabi([]); }} variant="outline" size="sm"><Plus className="h-4 w-4 mr-2" /> Nuevo</Button>
-                       <Button onClick={handleSaveToDB} className="bg-blue-600 hover:bg-blue-700" size="sm" disabled={isSaving}>{isSaving ? "Guardando..." : <><Save className="h-4 w-4 mr-2"/> Guardar</>}</Button>
-                       <Button onClick={handlePrintToPdf} variant="outline" size="sm" disabled={!activeTab}><FileDown className="h-4 w-4 mr-2" /> Exportar PDF</Button>
+                       <Button onClick={() => { setActiveSyllabusId(null); setSyllabi([]); }} variant="outline" size="sm" className="rounded-xl border-gray-200 hover:bg-gray-50 h-9 px-3"><Plus className="h-4 w-4 mr-1.5" /> Nuevo</Button>
+                       <Button onClick={handleSaveToDB} className="rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 shadow-sm h-9 px-4" size="sm" disabled={isSaving}>
+                         {isSaving ? <span className="flex items-center gap-2"><span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Guardando...</span> : <><Save className="h-4 w-4 mr-1.5"/> Guardar</>}
+                       </Button>
+                       <Button onClick={handlePrintToPdf} variant="outline" size="sm" disabled={!activeTab} className="rounded-xl border-gray-200 hover:bg-gray-50 h-9 px-3"><FileDown className="h-4 w-4 mr-1.5" /> PDF</Button>
                     </div>
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between">
-                    <div>
-                      <h4 className="text-amber-800 font-bold flex items-center gap-2"><FileText className="h-5 w-5" /> Sincronización Inteligente</h4>
-                      <p className="text-amber-700 text-sm">Sube el Word lleno y las celdas se auto-completarán.</p>
+                <CardContent className="pt-0 pb-4">
+                  <div className="p-3.5 bg-gradient-to-r from-amber-50/80 to-orange-50/80 border border-amber-200/40 rounded-2xl flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-amber-100/80 rounded-xl flex-shrink-0">
+                        <Sparkles className="h-4 w-4 text-amber-600" />
+                      </div>
+                      <div>
+                        <h4 className="text-amber-800 font-semibold text-[13px]">Sincronización Inteligente</h4>
+                        <p className="text-amber-600/80 text-[11px]">Sube el Word lleno y las celdas se auto-completarán</p>
+                      </div>
                     </div>
-                    <Button onClick={() => fileInputRefSync.current?.click()} className="bg-amber-600 text-white" disabled={isLoading}><Upload className="h-4 w-4 mr-2" /> Subir Word</Button>
-                    {wordRawTables.length > 0 && <Button onClick={() => setShowWordPreview(!showWordPreview)} variant="outline" className="text-blue-700 ml-2"><FileText className="h-4 w-4 mr-1" /> Ver Tablas</Button>}
+                    <div className="flex gap-2 flex-shrink-0">
+                      <Button onClick={() => fileInputRefSync.current?.click()} className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-sm h-8" size="sm" disabled={isLoading}><Upload className="h-3.5 w-3.5 mr-1.5" /> Subir Word</Button>
+                      {wordRawTables.length > 0 && <Button onClick={() => setShowWordPreview(!showWordPreview)} variant="outline" size="sm" className="rounded-xl text-blue-700 border-blue-200/60 hover:bg-blue-50 h-8"><Eye className="h-3.5 w-3.5 mr-1" /> Ver Tablas</Button>}
+                    </div>
                     <input type="file" ref={fileInputRefSync} className="hidden" accept=".docx" onChange={handleSmartSync} />
                   </div>
                 </CardContent>
               </Card>
 
-              <div className="mb-4 select-none border-b border-emerald-100 pb-1.5 flex flex-wrap gap-1">
-                {activeSyllabus.tabs.map(tab => (
+              <div className="mb-0 select-none flex flex-wrap items-end gap-1 relative px-1">
+                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-emerald-200/60 to-transparent" />
+                {activeSyllabus.tabs.map((tab, tabIndex) => (
                   <div key={tab.id} className="relative group">
                     {editingTabId === tab.id ? (
-                      <div className="flex items-center bg-white border border-emerald-500 rounded px-1 h-7">
-                        <Input value={tempTabTitle} onChange={(e) => setTempTabTitle(e.target.value)} className="h-6 w-36 text-xs border-none focus-visible:ring-0" autoFocus onKeyDown={(e) => e.key === "Enter" && saveTabRename()} onBlur={saveTabRename} />
-                        <Button size="icon" variant="ghost" className="h-5 w-5" onClick={saveTabRename}><Check className="h-3 w-3" /></Button>
+                      <div className="flex items-center bg-white border-2 border-emerald-400 rounded-t-xl px-2 h-10 shadow-sm">
+                        <Input value={tempTabTitle} onChange={(e) => setTempTabTitle(e.target.value)} className="h-7 w-36 text-xs border-none focus-visible:ring-0 bg-transparent" autoFocus onKeyDown={(e) => e.key === "Enter" && saveTabRename()} onBlur={saveTabRename} />
+                        <Button size="icon" variant="ghost" className="h-5 w-5 text-emerald-600" onClick={saveTabRename}><Check className="h-3 w-3" /></Button>
                       </div>
                     ) : (
-                      <div onClick={() => setActiveTabId(tab.id)} onDoubleClick={() => startRenamingTab(tab)} className={`flex items-center h-7 px-2.5 rounded border cursor-pointer text-[11px] font-medium ${activeTabId === tab.id ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'}`}>
-                        <span className="mr-1.5">{tab.title}</span>
-                        <div className={`flex gap-0.5 ${activeTabId === tab.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                           <Pencil className="h-2.5 w-2.5" onClick={(e) => { e.stopPropagation(); startRenamingTab(tab); }} />
+                      <div onClick={() => setActiveTabId(tab.id)} onDoubleClick={() => startRenamingTab(tab)} className={`syllabus-tab flex items-center h-10 px-4 rounded-t-xl cursor-pointer text-[12px] font-medium transition-all ${
+                        activeTabId === tab.id 
+                          ? 'bg-white text-emerald-700 shadow-[0_-1px_4px_rgba(0,0,0,0.04)] z-10 -mb-[2px] pb-[2px] font-semibold border border-b-0 border-gray-100' 
+                          : 'text-gray-400 hover:text-emerald-700 hover:bg-white/60'
+                      } ${activeTabId === tab.id ? 'active' : ''}`}>
+                        <span className={`text-[10px] font-bold mr-1.5 ${activeTabId === tab.id ? 'text-emerald-500' : 'text-gray-300'}`}>{tabIndex + 1}.</span>
+                        <span className="mr-2">{tab.title}</span>
+                        <div className={`flex gap-0.5 transition-opacity ${activeTabId === tab.id ? 'opacity-50 hover:opacity-100' : 'opacity-0 group-hover:opacity-50 hover:!opacity-100'}`}>
+                           <Pencil className="h-2.5 w-2.5 hover:text-blue-500" onClick={(e) => { e.stopPropagation(); startRenamingTab(tab); }} />
                            <X className="h-3 w-3 hover:text-red-500" onClick={(e) => { e.stopPropagation(); removeTab(tab.id); }} />
                         </div>
                       </div>
                     )}
                   </div>
                 ))}
-                <Button onClick={addTab} variant="outline" size="sm" className="h-7 text-[11px] border-dashed border-emerald-300 px-2"><Plus className="h-3 w-3 mr-0.5" /> Nueva Sección</Button>
+                <Button onClick={addTab} variant="ghost" size="sm" className="h-10 text-[11px] text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50/50 rounded-t-xl border border-b-0 border-dashed border-emerald-200/60 px-3"><Plus className="h-3 w-3 mr-1" /> Sección</Button>
+                <Button onClick={addVisadoTab} variant="ghost" size="sm" className="h-10 text-[11px] text-amber-500 hover:text-amber-700 hover:bg-amber-50/50 rounded-t-xl border border-b-0 border-dashed border-amber-200/60 px-3"><PenLine className="h-3 w-3 mr-1" /> Visado / Firmas</Button>
               </div>
 
               {activeTab && (
-                <Card className="border-emerald-100 shadow-md">
-                  <CardContent className="p-4">
-                    <div className="flex flex-wrap gap-2 mb-4 p-2 border rounded-md bg-emerald-50/50">
-                       <Button size="sm" onClick={() => handleInsertRow('above')} disabled={!selectedCells.length}><Plus className="h-3 w-3 mr-1"/>Fila ↑</Button>
-                       <Button size="sm" onClick={() => handleInsertRow('below')} disabled={!selectedCells.length}><Plus className="h-3 w-3 mr-1"/>Fila ↓</Button>
-                       <Button size="sm" onClick={() => handleInsertColumn('left')} disabled={!selectedCells.length}><Plus className="h-3 w-3 mr-1"/>Col ←</Button>
-                       <Button size="sm" onClick={() => handleInsertColumn('right')} disabled={!selectedCells.length}><Plus className="h-3 w-3 mr-1"/>Col →</Button>
-                       <div className="w-px h-6 bg-emerald-200 mx-1"></div>
-                       <Button size="sm" onClick={removeSelectedRow} className="bg-red-50 text-red-600" disabled={!selectedCells.length}><Minus className="h-3 w-3 mr-1"/>Fila</Button>
-                       <Button size="sm" onClick={removeSelectedColumn} className="bg-red-50 text-red-600" disabled={!selectedCells.length}><Minus className="h-3 w-3 mr-1"/>Col</Button>
-                       <div className="w-px h-6 bg-emerald-200 mx-1"></div>
-                       <Button size="sm" onClick={toggleVerticalText} disabled={!selectedCells.length}><ArrowUpFromLine className="h-4 w-4 mr-1" /> Vertical</Button>
-                       <Button size="sm" onClick={mergeCells} disabled={selectedCells.length < 2} variant="outline"><Merge className="h-4 w-4 mr-1" />Unir</Button>
-                       <Button size="sm" onClick={clearSelectedCells} disabled={!selectedCells.length} variant="outline"><Trash2 className="h-4 w-4 mr-1" />Limpiar</Button>
+                <Card className="border border-gray-100 shadow-[0_2px_12px_rgba(0,0,0,0.04)] rounded-2xl rounded-tl-none overflow-hidden animate-fade-in-up">
+                  <CardContent className="p-5">
+                    {/* Toolbar */}
+                    <div className="flex flex-wrap items-center gap-1.5 mb-5 px-3 py-2.5 rounded-2xl bg-white border border-gray-100 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+                       <div className="flex items-center gap-1 bg-emerald-50/60 rounded-xl px-2 py-1">
+                         <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-wider">Insertar</span>
+                         <Button size="sm" onClick={() => handleInsertRow('above')} disabled={!selectedCells.length} className="toolbar-btn h-7 px-2.5 text-[11px] bg-white hover:bg-emerald-50 text-gray-600 hover:text-emerald-700 border border-gray-200/80 shadow-none"><Rows3 className="h-3 w-3 mr-1"/>↑ Fila</Button>
+                         <Button size="sm" onClick={() => handleInsertRow('below')} disabled={!selectedCells.length} className="toolbar-btn h-7 px-2.5 text-[11px] bg-white hover:bg-emerald-50 text-gray-600 hover:text-emerald-700 border border-gray-200/80 shadow-none"><Rows3 className="h-3 w-3 mr-1"/>↓ Fila</Button>
+                         <Button size="sm" onClick={() => handleInsertColumn('left')} disabled={!selectedCells.length} className="toolbar-btn h-7 px-2.5 text-[11px] bg-white hover:bg-emerald-50 text-gray-600 hover:text-emerald-700 border border-gray-200/80 shadow-none"><Columns className="h-3 w-3 mr-1"/>← Col</Button>
+                         <Button size="sm" onClick={() => handleInsertColumn('right')} disabled={!selectedCells.length} className="toolbar-btn h-7 px-2.5 text-[11px] bg-white hover:bg-emerald-50 text-gray-600 hover:text-emerald-700 border border-gray-200/80 shadow-none"><Columns className="h-3 w-3 mr-1"/>→ Col</Button>
+                       </div>
+                       <div className="flex items-center gap-1 bg-red-50/50 rounded-xl px-2 py-1">
+                         <span className="text-[9px] font-bold text-red-400 uppercase tracking-wider">Eliminar</span>
+                         <Button size="sm" onClick={removeSelectedRow} disabled={!selectedCells.length} className="toolbar-btn h-7 px-2.5 text-[11px] bg-white hover:bg-red-50 text-red-500 hover:text-red-700 border border-red-100/80 shadow-none"><Minus className="h-3 w-3 mr-1"/>Fila</Button>
+                         <Button size="sm" onClick={removeSelectedColumn} disabled={!selectedCells.length} className="toolbar-btn h-7 px-2.5 text-[11px] bg-white hover:bg-red-50 text-red-500 hover:text-red-700 border border-red-100/80 shadow-none"><Minus className="h-3 w-3 mr-1"/>Col</Button>
+                       </div>
+                       <div className="flex items-center gap-1 bg-blue-50/50 rounded-xl px-2 py-1">
+                         <span className="text-[9px] font-bold text-blue-400 uppercase tracking-wider">Formato</span>
+                         <Button size="sm" onClick={toggleVerticalText} disabled={!selectedCells.length} className="toolbar-btn h-7 px-2.5 text-[11px] bg-white hover:bg-blue-50 text-gray-600 hover:text-blue-700 border border-gray-200/80 shadow-none"><Type className="h-3 w-3 mr-1" /> Vertical</Button>
+                         <Button size="sm" onClick={mergeCells} disabled={selectedCells.length < 2} className="toolbar-btn h-7 px-2.5 text-[11px] bg-white hover:bg-purple-50 text-gray-600 hover:text-purple-700 border border-gray-200/80 shadow-none"><Merge className="h-3 w-3 mr-1" />Unir</Button>
+                         <Button size="sm" onClick={clearSelectedCells} disabled={!selectedCells.length} className="toolbar-btn h-7 px-2.5 text-[11px] bg-white hover:bg-gray-100 text-gray-500 hover:text-gray-700 border border-gray-200/80 shadow-none"><Eraser className="h-3 w-3 mr-1" />Limpiar</Button>
+                       </div>
+                       {selectedCells.length > 0 && <span className="ml-auto text-[10px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full font-semibold border border-emerald-200/50">{selectedCells.length} celda{selectedCells.length > 1 ? 's' : ''}</span>}
                     </div>
 
-                    <div className="overflow-x-auto border border-gray-200 rounded-lg shadow-sm bg-white max-h-[75vh] overflow-y-auto custom-scrollbar">
-                      <table className="border-collapse text-xs text-left" style={{ tableLayout: (activeTab && (activeTab.title.toUpperCase().includes('GENERAL') || activeTab.title.toUpperCase().includes('INFORMACIÓN') || activeTab.title.toUpperCase().includes('DATOS'))) ? 'fixed' : 'auto', width: '100%', maxWidth: '100%' }}> 
-                        <tbody className="divide-y divide-gray-200">
+                    <div className="syllabus-table-wrap overflow-x-auto max-h-[82vh] overflow-y-auto syllabus-scroll">
+                      {(() => {
+                        // === PRE-COMPUTE: Analyze all columns to get smart widths ===
+                        const isFirstSection = activeTab.title.toUpperCase().includes('GENERAL') || activeTab.title.toUpperCase().includes('INFORMACIÓN') || activeTab.title.toUpperCase().includes('DATOS');
+                        
+                        // Find the REAL column count from actual cell array
+                        const totalPhysicalCols = tableData.reduce((max, row) => Math.max(max, row.cells.length), 0);
+
+                        // === COLSPAN-AWARE COLUMN ANALYSIS ===
+                        // For each physical column, accumulate weight from cells that SPAN it
+                        const colWeights = new Array(totalPhysicalCols).fill(0);
+                        const colIsNumeric = new Array(totalPhysicalCols).fill(true);
+                        const colIsSeparator = new Array(totalPhysicalCols).fill(true);
+                        const colMaxLen = new Array(totalPhysicalCols).fill(0);
+                        const colHasContent = new Array(totalPhysicalCols).fill(false);
+                        let sampleRows = 0;
+
+                        for (const row of tableData) {
+                          const visibleCells = row.cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
+                          if (visibleCells.length === 0) continue;
+                          sampleRows++;
+                          
+                          // Map visible cells to their physical positions
+                          let physIdx = 0;
+                          for (let ci = 0; ci < row.cells.length; ci++) {
+                            const cell = row.cells[ci];
+                            if (cell.rowSpan === 0 && cell.colSpan === 0) continue; // skip hidden
+                            
+                            const txt = (cell.content || '').trim();
+                            const span = Math.max(cell.colSpan, 1);
+                            const txtLen = txt.length;
+                            const isSep = txt === ':' || (txtLen <= 2 && txtLen > 0 && !/[a-zA-Z0-9]/.test(txt));
+                            const isNum = /^[\d.,\s\-\/]+$/.test(txt) && txtLen > 0;
+                            
+                            // Spread this cell's content weight across all physical columns it spans
+                            // A cell spanning 4 cols gives each col 1/4 of its text weight
+                            const weightPerCol = txtLen > 0 ? Math.max(txtLen / span, 1) : 0;
+                            
+                            for (let s = 0; s < span && (ci + s) < totalPhysicalCols; s++) {
+                              const idx = ci + s;
+                              if (txtLen > 0) {
+                                colHasContent[idx] = true;
+                                colMaxLen[idx] = Math.max(colMaxLen[idx], weightPerCol);
+                              }
+                              if (!isNum && txtLen > 0) colIsNumeric[idx] = false;
+                              if (!isSep && txtLen > 0) colIsSeparator[idx] = false;
+                            }
+                          }
+                        }
+
+                        // Mark cols with no content
+                        for (let ci = 0; ci < totalPhysicalCols; ci++) {
+                          if (!colHasContent[ci]) { colIsNumeric[ci] = false; colIsSeparator[ci] = false; }
+                        }
+
+                        // Compute final weight per physical column
+                        const getColWeight = (ci: number): number => {
+                          if (!colHasContent[ci]) return 0.1;         // empty col -> minimal
+                          if (colIsSeparator[ci]) return 0.12;        // ":" -> tiny
+                          const len = colMaxLen[ci];
+                          if (colIsNumeric[ci] && len <= 4) return 0.35;  // hours (1-3 digits)
+                          if (colIsNumeric[ci]) return 0.5;           // other numbers
+                          if (len <= 5) return 0.5;                   // very short labels
+                          if (len <= 10) return 0.8;                  // short labels
+                          if (len <= 20) return 1.5;                  // medium labels
+                          if (len <= 40) return 2.5;                  // medium text
+                          if (len <= 80) return 4.0;                  // long text
+                          return 5.5;                                 // very long text
+                        };
+
+                        // Build normalized percentages
+                        const rawWeights = Array.from({ length: totalPhysicalCols }, (_, ci) => getColWeight(ci));
+                        const totalW = rawWeights.reduce((s, w) => s + w, 0) || 1;
+                        const normalizedPcts = rawWeights.map((w, ci) => {
+                          const pct = (w / totalW) * 100;
+                          // Enforce minimums by column type
+                          if (colIsSeparator[ci]) return Math.max(pct, 0.8);
+                          if (!colHasContent[ci]) return Math.max(pct, 0.3);
+                          if (colIsNumeric[ci] && colMaxLen[ci] <= 4) return Math.max(pct, 1.5);
+                          return Math.max(pct, 2);
+                        });
+                        // Re-normalize to exactly 100%
+                        const pctTotal = normalizedPcts.reduce((s, p) => s + p, 0);
+                        const finalPcts = normalizedPcts.map(p => Math.round((p / pctTotal) * 1000) / 10);
+
+                        return (
+                      <table className="syllabus-table" style={{ tableLayout: 'fixed', width: '100%' }}>
+                        <colgroup>
+                          {finalPcts.map((pct, ci) => (
+                            <col key={ci} style={{ width: `${pct}%` }} />
+                          ))}
+                        </colgroup>
+                        <tbody>
                           {tableData.length === 0 ? (
-                            <tr><td className="p-12 text-center text-gray-500">La tabla está vacía. Importe o cree una nueva.</td></tr>
+                            <tr><td className="p-16 text-center" colSpan={totalPhysicalCols || 1}>
+                              <div className="empty-pattern rounded-2xl py-12">
+                                <FileText className="h-12 w-12 text-gray-200 mx-auto mb-3" />
+                                <p className="text-gray-400 font-medium">La tabla está vacía</p>
+                                <p className="text-gray-300 text-[11px] mt-1">Importe un documento Word o cree una nueva sección</p>
+                              </div>
+                            </td></tr>
                           ) : (
                             tableData.map((row, rowIndex) => {
-                              const isFirstSectionRow = activeTab && (activeTab.title.toUpperCase().includes('GENERAL') || activeTab.title.toUpperCase().includes('INFORMACIÓN') || activeTab.title.toUpperCase().includes('DATOS'));
                               const rowVisibleCols = row.cells.filter(c => c.rowSpan > 0 && c.colSpan > 0).length;
-                              const isFormRow = isFirstSectionRow && rowVisibleCols <= 4;
+                              const isFormRow = isFirstSection && rowVisibleCols <= 4;
                               return (
-                              <tr key={row.id} className={`transition-colors ${isFormRow ? 'hover:bg-slate-50/80' : 'hover:bg-blue-50/50'}`}>
+                              <tr key={row.id} className="group/row transition-colors duration-100 hover:bg-emerald-50/25">
                                 {row.cells.map((cell, cellIndex) => {
                                   if (cell.rowSpan === 0 || cell.colSpan === 0) return null;
                                   
@@ -1497,57 +1682,63 @@ export default function EditorSyllabusComisionPage() {
                                   const displayContent = getAutoFilledContent(cell, rowIndex, cellIndex);
                                   const isVertical = cell.textOrientation === 'vertical';
 
+                                  // === NUMERIC DETECTION ===
+                                  const isNumericContent = /^[\d.,\s\-\/]+$/.test(contentTrimmed) && contentTrimmed.length > 0 && contentTrimmed.length <= 10;
+                                  const isHoursLike = /^\d{1,3}$/.test(contentTrimmed); // 1-3 digit numbers (hours, credits)
+
                                   // Detector de separadores (":" y similares)
                                   const isSeparator = contentTrimmed === ':' || (contentTrimmed.length <= 2 && !/[a-zA-Z0-9]/.test(contentTrimmed) && contentTrimmed.length > 0);
 
-                                  // Determinar si estamos en la primera sección (datos generales, filas con pocas columnas)
-                                  const isFirstSection = activeTab.title.toUpperCase().includes('GENERAL') || activeTab.title.toUpperCase().includes('INFORMACIÓN') || activeTab.title.toUpperCase().includes('DATOS');
                                   const totalVisibleCols = row.cells.filter(c => c.rowSpan > 0 && c.colSpan > 0).length;
                                   const isSimpleRow = totalVisibleCols <= 4; // filas tipo etiqueta-valor
-
-                                  // Lógica de anchos compacta
-                                  const dims = (() => {
-                                    if (isFirstSection && isSimpleRow) {
-                                      // Primera sección: layout tipo formulario
-                                      if (isSeparator) return { w: '18px', min: '18px', max: '18px' };
-                                      if (cellIndex === 0) return { w: '250px', min: '200px', max: '300px' };
-                                      // Valor: ocupa el resto
-                                      return { w: 'auto', min: '60px', max: 'none' };
-                                    }
-                                    if (isVertical) return { w: '28px', min: '28px', max: '28px' };
-                                    if (isSeparator) return { w: '20px', min: '20px', max: '20px' };
-                                    if (contentTrimmed.length <= 4 && cellIndex > 1 && !cell.isHeader) return { w: '35px', min: '35px', max: '45px' };
-                                    if (cellIndex === 0) return { w: 'auto', min: '100px', max: '180px' };
-                                    if (cellIndex === 1 && row.cells.length > 4) return { w: 'auto', min: '120px', max: '250px' };
-                                    return { w: 'auto', min: '60px', max: 'none' };
-                                  })();
-                                  const cellWidth = dims.w;
-                                  const cellMinW = dims.min;
-                                  const cellMaxW = dims.max;
 
                                   // Estilo especial para primera sección (formulario)
                                   const isFirstSectionLabel = isFirstSection && isSimpleRow && cellIndex === 0;
                                   const isFirstSectionValue = isFirstSection && isSimpleRow && cellIndex > 0 && !isSeparator;
 
+                                  // Detect if entire row is a "title row" (one visible cell spanning all columns)
+                                  const totalVisibleInRow = row.cells.filter(c => c.rowSpan > 0 && c.colSpan > 0).length;
+                                  const isTitleRow = totalVisibleInRow === 1 && cell.colSpan > 2;
+
+                                  // Alignment: center numeric cells, center headers, center separators
+                                  const cellAlign = isSeparator 
+                                    ? 'center' 
+                                    : (isNumericContent || isHoursLike) && !cell.isHeader && !isTitleRow
+                                      ? 'center'
+                                      : cell.isHeader && !isTitleRow
+                                        ? 'center'
+                                        : 'left';
+                                  
+                                  const cellVAlign = (isNumericContent || isHoursLike || cell.isHeader) ? 'middle' : 'top';
+
+                                  // Build clean class names
+                                  const cellTypeClass = isTitleRow ? 'syllabus-title-row'
+                                    : isFirstSectionLabel ? 'syllabus-label-cell'
+                                    : cell.isHeader && !isTitleRow ? 'syllabus-header-cell'
+                                    : '';
+
                                   return (
                                     <td
                                       key={cell.id}
-                                      className={`border relative align-top ${
-                                        isFirstSectionLabel 
-                                          ? 'border-gray-200 bg-gradient-to-r from-slate-50 to-gray-50 font-semibold text-gray-700'
-                                          : isFirstSectionValue
-                                            ? 'border-gray-200 bg-white text-gray-800'
-                                            : cell.isHeader 
-                                              ? 'border-gray-300 bg-gray-100/80 font-bold text-gray-800' 
-                                              : 'border-gray-300 bg-white text-gray-700'
-                                      } ${isSelected ? 'ring-2 ring-inset ring-blue-500 z-10 bg-blue-50' : ''} ${isReadOnly ? 'bg-gray-50 cursor-not-allowed text-gray-500' : 'cursor-cell'}`}
+                                      className={`syllabus-cell relative ${cellTypeClass} ${
+                                        isTitleRow
+                                          ? 'font-bold text-emerald-800'
+                                          : isFirstSectionLabel 
+                                            ? 'font-semibold text-slate-700'
+                                            : isFirstSectionValue
+                                              ? 'text-gray-800'
+                                              : isSeparator
+                                                ? 'syllabus-separator'
+                                                : cell.isHeader 
+                                                  ? 'font-semibold text-emerald-800' 
+                                                  : (isNumericContent || isHoursLike)
+                                                    ? 'text-gray-700 font-medium tabular-nums'
+                                                    : 'text-gray-700'
+                                      } ${isSelected ? 'syllabus-cell-selected' : ''} ${isReadOnly ? 'syllabus-cell-readonly cursor-not-allowed !text-gray-400 italic' : 'cursor-cell'}`}
                                       style={{ 
-                                        backgroundColor: cell.backgroundColor || (isFirstSectionLabel ? undefined : cell.isHeader ? '#f8fafc' : undefined), 
-                                        width: cellWidth,
-                                        minWidth: cellMinW,
-                                        maxWidth: cellMaxW,
                                         padding: 0,
-                                        ...(isFirstSection && isSimpleRow ? { borderBottom: '1px solid #e2e8f0' } : {}),
+                                        textAlign: cellAlign as any,
+                                        verticalAlign: cellVAlign,
                                       }}
                                       rowSpan={cell.rowSpan} 
                                       colSpan={cell.colSpan}
@@ -1555,16 +1746,25 @@ export default function EditorSyllabusComisionPage() {
                                       onDoubleClick={() => { setModalCell({ id: cell.id, content: displayContent, isEditable: cell.isEditable && !isReadOnly }); setEditContent(displayContent); }}
                                     >
                                       <div 
-                                        className={`w-full h-full flex justify-start text-left ${isFirstSectionLabel ? 'px-2 py-1' : isFirstSectionValue ? 'px-2 py-1' : 'px-1 py-0'}`} 
+                                        className={`w-full h-full flex ${
+                                          cellAlign === 'center' ? 'items-center justify-center' : 'items-start justify-start'
+                                        } ${
+                                          isTitleRow ? 'px-3 py-2' 
+                                          : isSeparator ? 'px-0 py-0.5' 
+                                          : isFirstSectionLabel ? 'px-2.5 py-2' 
+                                          : cell.isHeader ? 'px-2 py-1.5' 
+                                          : (isNumericContent || isHoursLike) ? 'px-1.5 py-1.5'
+                                          : 'px-2.5 py-1.5'
+                                        }`} 
                                         style={{ 
-                                          writingMode: isVertical ? 'vertical-rl' : 'horizontal-tb', 
-                                          transform: isVertical ? 'rotate(180deg)' : 'none',
-                                          alignItems: 'flex-start',
-                                          maxHeight: isVertical ? '100px' : 'none', 
-                                          whiteSpace: isVertical ? 'nowrap' : 'pre-wrap', 
+                                          writingMode: 'horizontal-tb', 
+                                          transform: 'none',
+                                          whiteSpace: 'pre-wrap', 
                                           overflow: 'hidden',
-                                          lineHeight: isFirstSection ? '1.4' : '1.15',
-                                          fontSize: isFirstSectionLabel ? '11.5px' : isVertical ? '9px' : '11px'
+                                          lineHeight: isTitleRow ? '1.5' : cell.isHeader ? '1.35' : '1.45',
+                                          fontSize: isTitleRow ? '11.5px' : isFirstSectionLabel ? '11px' : cell.isHeader ? '10px' : (isNumericContent || isHoursLike) ? '11px' : '11px',
+                                          letterSpacing: cell.isHeader ? '0.015em' : isTitleRow ? '0.01em' : 'normal',
+                                          textAlign: cellAlign,
                                         }}
                                       >
                                         {editingCell === cell.id ? (
@@ -1573,15 +1773,20 @@ export default function EditorSyllabusComisionPage() {
                                             onChange={(e) => setEditContent(e.target.value)} 
                                             autoFocus 
                                             onBlur={saveEdit} 
-                                            className="w-full min-h-[50px] p-1 text-xs resize-y border-blue-400 focus-visible:ring-1 focus-visible:ring-blue-500" 
+                                            className="syllabus-edit-input w-full min-h-[60px] p-2 text-xs resize-y border-emerald-200 focus-visible:ring-1 focus-visible:ring-emerald-400 rounded-lg bg-white" 
                                             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveEdit(); } if (e.key === "Escape") cancelEdit(); }} 
                                           />
                                         ) : (
                                           <div 
-                                            className="whitespace-pre-wrap break-words w-full"
-                                            style={{ wordBreak: 'break-word', lineHeight: '1.15' }}
+                                            className={`whitespace-pre-wrap break-words w-full ${cellAlign === 'center' ? 'text-center' : 'text-left'}`}
+                                            style={{ wordBreak: 'break-word', lineHeight: 'inherit' }}
                                           >
-                                            {displayContent || <span className="opacity-0">.</span>}
+                                            {isSeparator 
+                                              ? <span className="text-slate-300 text-[10px] select-none">{displayContent}</span>
+                                              : displayContent 
+                                                ? displayContent 
+                                                : <span className="text-gray-200/80 select-none text-[9px]">·</span>
+                                            }
                                           </div>
                                         )}
                                       </div>
@@ -1593,6 +1798,8 @@ export default function EditorSyllabusComisionPage() {
                           )}
                         </tbody>
                       </table>
+                        );
+                      })()}
                     </div>
                   </CardContent>
                 </Card>
@@ -1680,13 +1887,34 @@ export default function EditorSyllabusComisionPage() {
       </div>
 
       {modalCell && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setModalCell(null)}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between p-4 border-b bg-emerald-50"><h3 className="font-semibold text-emerald-800">Ver / Editar</h3><button onClick={() => setModalCell(null)}><X className="h-5 w-5" /></button></div>
-            <div className="flex-1 overflow-y-auto p-4">
-              {modalCell.isEditable ? <Textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} className="w-full min-h-[300px] p-3 text-sm border-gray-300 rounded-lg" autoFocus /> : <div className="whitespace-pre-wrap text-sm text-gray-700 p-3 bg-gray-50 rounded-lg min-h-[200px]">{modalCell.content}</div>}
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-[6px] z-50 flex items-center justify-center p-4 animate-fade-in-up" onClick={() => setModalCell(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col border border-gray-100 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="syllabus-accent-bar" />
+            <div className="flex justify-between items-center px-5 py-4 bg-gradient-to-b from-gray-50/60 to-white">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-emerald-100/80 rounded-xl">
+                  {modalCell.isEditable ? <PenLine className="h-4 w-4 text-emerald-700" /> : <Eye className="h-4 w-4 text-emerald-700" />}
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-800 text-[15px]">{modalCell.isEditable ? 'Editar Celda' : 'Ver Contenido'}</h3>
+                  <p className="text-[11px] text-gray-400">Doble clic en cualquier celda para abrir este editor</p>
+                </div>
+              </div>
+              <button onClick={() => setModalCell(null)} className="p-1.5 rounded-full hover:bg-gray-100 transition-colors"><X className="h-4 w-4 text-gray-400" /></button>
             </div>
-            <div className="flex justify-end gap-3 p-4 border-t bg-gray-50"><Button variant="outline" onClick={() => setModalCell(null)}>Cerrar</Button>{modalCell.isEditable && <Button className="bg-emerald-600 text-white" onClick={saveModalEdit}><Save className="h-4 w-4 mr-2" /> Guardar</Button>}</div>
+            <div className="flex-1 overflow-y-auto px-5 pb-5 syllabus-scroll">
+              {modalCell.isEditable 
+                ? <Textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} className="syllabus-edit-input w-full min-h-[300px] p-4 text-sm border-gray-200 rounded-xl focus:ring-emerald-400 focus:border-emerald-400 font-mono leading-relaxed bg-white" autoFocus /> 
+                : <div className="whitespace-pre-wrap text-sm text-gray-700 p-4 bg-gray-50/60 rounded-xl min-h-[200px] border border-gray-100 leading-relaxed">{modalCell.content}</div>
+              }
+            </div>
+            <div className="flex justify-between items-center gap-3 px-5 py-3.5 border-t border-gray-100 bg-gray-50/40">
+              <span className="text-[11px] text-gray-400 tabular-nums">{editContent.length} caracteres</span>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setModalCell(null)} className="rounded-xl border-gray-200 h-9">Cancelar</Button>
+                {modalCell.isEditable && <Button className="rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-sm h-9" onClick={saveModalEdit}><Save className="h-4 w-4 mr-1.5" /> Guardar</Button>}
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -891,7 +891,14 @@ async function procesarWordMammoth(buffer) {
     $('table tr').each((i, row) => {
       const celdas = [];
       $(row).find('td, th').each((j, cell) => {
-        celdas.push($(cell).text().trim());
+        const pElements = $(cell).find('p');
+        let cellText;
+        if (pElements.length > 0) {
+          cellText = pElements.map((i, p) => $(p).text().trim()).get().filter(t => t).join('\n');
+        } else {
+          cellText = $(cell).text().trim();
+        }
+        celdas.push(cellText);
       });
       if (celdas.some(c => c)) {
         filas.push(celdas);
@@ -2589,13 +2596,56 @@ exports.getProgramasDisponibles = async (req, res) => {
   try {
     console.log('ðŸ” Obteniendo programas analÃ­ticos disponibles...');
 
+    const whereClause = {
+      plantilla_id: {
+        [Op.ne]: null
+      }
+    };
+
+    // Si es docente/profesor, filtrar por sus asignaturas asignadas
+    if (req.user?.rol === 'profesor' || req.user?.rol === 'docente') {
+      const profesor = await db.Profesor.findByPk(req.user.id, {
+        attributes: ['id', 'asignatura_id'],
+        include: [
+          {
+            model: db.Asignatura,
+            as: 'asignaturas',
+            attributes: ['id'],
+            through: { attributes: [] }
+          }
+        ]
+      });
+
+      if (!profesor) {
+        return res.status(404).json({
+          success: false,
+          message: 'Profesor no encontrado'
+        });
+      }
+
+      const asignaturaIds = new Set();
+      if (profesor.asignatura_id) asignaturaIds.add(Number(profesor.asignatura_id));
+      (profesor.asignaturas || []).forEach(a => {
+        if (a?.id) asignaturaIds.add(Number(a.id));
+      });
+
+      if (asignaturaIds.size === 0) {
+        console.log('â„¹ï¸ Docente sin asignaturas asignadas. No se devuelven programas.');
+        return res.status(200).json({
+          success: true,
+          data: [],
+          total: 0
+        });
+      }
+
+      whereClause.asignatura_id = {
+        [Op.in]: [...asignaturaIds]
+      };
+    }
+
     // Obtener todos los programas analÃ­ticos que tengan plantilla_id
     const programas = await ProgramaAnalitico.findAll({
-      where: {
-        plantilla_id: {
-          [Op.ne]: null // No es null
-        }
-      },
+      where: whereClause,
       include: [
         {
           model: PlantillaPrograma,

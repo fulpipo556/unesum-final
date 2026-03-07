@@ -47,6 +47,12 @@ const initSyllabusDocente = require('./SyllabusDocente');
 const initProgramaAnaliticoDocente = require('./ProgramaAnaliticoDocente');
 const initProfesorCarrera = require('./profesor_carreras');
 const initProfesorAsignatura = require('./profesor_asignaturas');
+const initRol = require('./rol');
+const initUsuarioRoles = require('./usuario_roles');
+const initUsuarioFacultades = require('./usuario_facultades');
+const initUsuarioCarreras = require('./usuario_carreras');
+const initUsuarioNiveles = require('./usuario_niveles');
+const initUsuarioAsignaturas = require('./usuario_asignaturas');
 
 
 // Inicializa el modelo Usuario
@@ -93,6 +99,12 @@ const SyllabusDocente = initSyllabusDocente(sequelize, Sequelize.DataTypes);
 const ProgramaAnaliticoDocente = initProgramaAnaliticoDocente(sequelize, Sequelize.DataTypes);
 const ProfesorCarrera = initProfesorCarrera(sequelize, Sequelize.DataTypes);
 const ProfesorAsignatura = initProfesorAsignatura(sequelize, Sequelize.DataTypes);
+const Rol = initRol(sequelize, Sequelize.DataTypes);
+const UsuarioRoles = initUsuarioRoles(sequelize, Sequelize.DataTypes);
+const UsuarioFacultades = initUsuarioFacultades(sequelize, Sequelize.DataTypes);
+const UsuarioCarreras = initUsuarioCarreras(sequelize, Sequelize.DataTypes);
+const UsuarioNiveles = initUsuarioNiveles(sequelize, Sequelize.DataTypes);
+const UsuarioAsignaturas = initUsuarioAsignaturas(sequelize, Sequelize.DataTypes);
 
 
 // Definir relaciones
@@ -251,6 +263,22 @@ SyllabusDocente.belongsTo(Asignatura, { foreignKey: 'asignatura_id', as: 'asigna
 ProgramaAnaliticoDocente.belongsTo(Profesor, { foreignKey: 'profesor_id', as: 'profesor' });
 Profesor.hasMany(ProgramaAnaliticoDocente, { foreignKey: 'profesor_id', as: 'programasDocente' });
 
+// Asociaciones Usuario <-> Rol/Facultad/Carrera/Nivel/Asignatura (muchos-a-muchos)
+Usuario.belongsToMany(Rol, { through: UsuarioRoles, foreignKey: 'usuario_id', otherKey: 'rol_id', as: 'roles' });
+Rol.belongsToMany(Usuario, { through: UsuarioRoles, foreignKey: 'rol_id', otherKey: 'usuario_id', as: 'usuarios' });
+
+Usuario.belongsToMany(Facultad, { through: UsuarioFacultades, foreignKey: 'usuario_id', otherKey: 'facultad_id', as: 'facultades' });
+Facultad.belongsToMany(Usuario, { through: UsuarioFacultades, foreignKey: 'facultad_id', otherKey: 'usuario_id', as: 'usuarios' });
+
+Usuario.belongsToMany(Carrera, { through: UsuarioCarreras, foreignKey: 'usuario_id', otherKey: 'carrera_id', as: 'carreras' });
+Carrera.belongsToMany(Usuario, { through: UsuarioCarreras, foreignKey: 'carrera_id', otherKey: 'usuario_id', as: 'usuarios' });
+
+Usuario.belongsToMany(Nivel, { through: UsuarioNiveles, foreignKey: 'usuario_id', otherKey: 'nivel_id', as: 'niveles' });
+Nivel.belongsToMany(Usuario, { through: UsuarioNiveles, foreignKey: 'nivel_id', otherKey: 'usuario_id', as: 'usuarios' });
+
+Usuario.belongsToMany(Asignatura, { through: UsuarioAsignaturas, foreignKey: 'usuario_id', otherKey: 'asignatura_id', as: 'asignaturas' });
+Asignatura.belongsToMany(Usuario, { through: UsuarioAsignaturas, foreignKey: 'asignatura_id', otherKey: 'usuario_id', as: 'usuarios' });
+
 
 module.exports = {
   sequelize,
@@ -292,5 +320,11 @@ module.exports = {
   SyllabusDocente,
   ProgramaAnaliticoDocente,
   ProfesorCarrera,
-  ProfesorAsignatura
+  ProfesorAsignatura,
+  Rol,
+  UsuarioRoles,
+  UsuarioFacultades,
+  UsuarioCarreras,
+  UsuarioNiveles,
+  UsuarioAsignaturas
 };

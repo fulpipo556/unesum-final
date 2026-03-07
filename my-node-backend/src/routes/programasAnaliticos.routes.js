@@ -33,10 +33,10 @@ router.post(
 
 // Rutas CRUD para Programas Analíticos
 // Administradores y comisión académica pueden gestionar programas
-router.get('/', authorize(['administrador', 'comision_academica']), programasController.getAll);
-router.get('/:id', authorize(['administrador', 'comision_academica']), programasController.getById);
-router.post('/', authorize(['administrador', 'comision_academica']), programasController.create);
-router.put('/:id', authorize(['administrador', 'comision_academica']), programasController.update);
-router.delete('/:id', authorize(['administrador', 'comision_academica']), programasController.delete);
+router.get('/', authorize(['administrador', 'comision_academica', 'comision']), programasController.getAll);
+router.get('/:id', authorize(['administrador', 'comision_academica', 'comision']), programasController.getById);
+router.post('/', authorize(['administrador', 'comision_academica', 'comision']), programasController.create);
+router.put('/:id', authorize(['administrador', 'comision_academica', 'comision']), programasController.update);
+router.delete('/:id', authorize(['administrador', 'comision_academica', 'comision']), programasController.delete);
 
 module.exports = router;

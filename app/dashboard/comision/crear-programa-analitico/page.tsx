@@ -13,8 +13,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Minus, Upload, Save, Merge, Trash2, Printer, X, Pencil, Check, ArrowUpFromLine, Copy, FileText, Eraser, FileDown } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import * as mammoth from "mammoth"
-import jsPDF from "jspdf"
-import autoTable from "jspdf-autotable"
 import { useSearchParams } from "next/navigation" 
 // --- INTERFACES DE DATOS ---
 interface TableCell { 
@@ -107,11 +105,14 @@ export default function EditorProgramaAnaliticoPage() {
         setSavedprogramas(programasArray);
         setPeriodos(periodosArray);
         // Pre-seleccionar periodo desde URL o el actual
+        // IMPORTANTE: El Select usa periodo.nombre como value, así que debemos setear el nombre
         if (periodoParam) {
-          setSelectedPeriod(periodoParam);
+          const periodoObj = periodosArray.find((p: any) => p.id?.toString() === periodoParam || p.nombre === periodoParam);
+          setSelectedPeriod(periodoObj ? periodoObj.nombre : periodoParam);
         } else if (!selectedPeriod && periodosArray.length > 0) {
           const actual = periodosArray.find((p: any) => p.estado === 'actual');
-          if (actual) setSelectedPeriod(actual.id.toString());
+          if (actual) setSelectedPeriod(actual.nombre);
+          else setSelectedPeriod(periodosArray[0].nombre);
         }
         
         console.log('✅ Datos cargados:', {
@@ -231,7 +232,10 @@ export default function EditorProgramaAnaliticoPage() {
         setprogramas([editorData]);
         setActiveProgramaAnaliticoId(editorData.id);
         setActiveTabId(editorData.tabs?.[0]?.id || null);
-        if (programaData.periodo) setSelectedPeriod(programaData.periodo);
+        if (programaData.periodo) {
+          const periodoObj = periodos.find((p: any) => p.id?.toString() === String(programaData.periodo));
+          setSelectedPeriod(periodoObj ? periodoObj.nombre : programaData.periodo);
+        }
         
         // También agregar a savedprogramas para que guardar lo detecte
         setSavedprogramas(prev => {
@@ -338,12 +342,41 @@ const handleSmartSync = async (event: React.ChangeEvent<HTMLInputElement>) => {
       const todasLasFilas = Array.from(htmlDoc.querySelectorAll("tr"));
       console.log("Filas HTML encontradas:", todasLasFilas.length);
 
+      // Track rowSpan groups: when a cell has rowSpan > 1, subsequent rows with fewer cells
+      // are continuation rows whose content should be appended to the same key
+      let rowSpanTracker: { clave: string; remaining: number } | null = null;
+
       todasLasFilas.forEach((tr, idx) => {
         const celdas = Array.from(tr.querySelectorAll("td, th"));
-        const textos = celdas.map(td => (td.textContent || "").trim());
+        const textos = celdas.map(td => {
+          const pElements = Array.from(td.querySelectorAll('p'));
+          return pElements.length > 0 
+            ? pElements.map(p => (p.textContent || '').trim()).filter(t => t).join('\n')
+            : (td.textContent || '').trim();
+        });
         
-        if (textos.length >= 2) {
-          console.log("  Fila " + idx + ":", textos.map(t => '"' + t.substring(0, 50) + '"').join(" | "));
+        // Check for rowSpan on first cell
+        const firstCellRowSpan = celdas.length > 0 ? parseInt(celdas[0].getAttribute('rowspan') || '1', 10) : 1;
+        
+        if (textos.length >= 1) {
+          console.log("  Fila " + idx + " (" + textos.length + " celdas)" + (rowSpanTracker ? " [rowSpan cont. de " + rowSpanTracker.clave.substring(0,30) + "]" : "") + ":", textos.map(t => '"' + t.substring(0, 50) + '"').join(" | "));
+        }
+
+        // ROWSPAN CONTINUATION: If we're tracking a rowSpan group and this row has fewer cells
+        // (e.g., 1 cell instead of 2), this is a continuation row - append content to the tracked key
+        if (rowSpanTracker && rowSpanTracker.remaining > 0 && textos.length === 1 && textos[0].length > 0) {
+          const valorExistente = wordData[rowSpanTracker.clave] || '';
+          wordData[rowSpanTracker.clave] = valorExistente + (valorExistente ? '\n' : '') + textos[0];
+          rowSpanTracker.remaining--;
+          console.log("  >>> ROWSPAN CONTINUACION para [" + rowSpanTracker.clave + "] += '" + textos[0].substring(0, 60) + "'");
+          if (rowSpanTracker.remaining <= 0) rowSpanTracker = null;
+          return; // Don't process this row further
+        }
+
+        // Decrement rowSpan counter even if we don't append
+        if (rowSpanTracker) {
+          rowSpanTracker.remaining--;
+          if (rowSpanTracker.remaining <= 0) rowSpanTracker = null;
         }
 
         // CASO ESPECIAL: Fila con 4 celdas tipo | CLAVE1 | VALOR1 | CLAVE2 | VALOR2 |
@@ -364,6 +397,11 @@ const handleSmartSync = async (event: React.ChangeEvent<HTMLInputElement>) => {
           if (textos[1].length > 0 && !wordData[clave]) {
             wordData[clave] = textos[1];
           }
+          // Start rowSpan tracking if first cell has rowspan > 1
+          if (firstCellRowSpan > 1) {
+            rowSpanTracker = { clave, remaining: firstCellRowSpan - 1 };
+            console.log("  >>> ROWSPAN detectado: [" + clave + "] rowSpan=" + firstCellRowSpan);
+          }
         }
         // Fila con 3 celdas: puede ser seccion | sub-header | valor
         // Ejemplo: BIBLIOGRAFÍA - FUENTES DE CONSULTA | BIBLIOGRAFÍA BÁSICA | B.B.1 Nederr...
@@ -380,6 +418,10 @@ const handleSmartSync = async (event: React.ChangeEvent<HTMLInputElement>) => {
             if (!wordData[c1]) {
               wordData[c1] = textos[2]; // Solo el valor, SIN el sub-header
             }
+          }
+          // Start rowSpan tracking for 3-cell rows too
+          if (firstCellRowSpan > 1) {
+            rowSpanTracker = { clave: textos[0].toUpperCase(), remaining: firstCellRowSpan - 1 };
           }
         }
 
@@ -413,13 +455,17 @@ const handleSmartSync = async (event: React.ChangeEvent<HTMLInputElement>) => {
         "CONTENIDOS DE LA ASIGNATURA", "ASIGNATURA", "NIVEL", "DOCENTE", "PERIODO",
         "CARRERA", "CODIGO", "MATERIA", "CREDITOS", "HORAS", "SEMESTRE", "MODALIDAD",
         "DIRECTOR/A ACADÉMICO/A", "COORDINADOR/A DE CARRERA", "DECANO/A DE FACULTAD",
+        "COMPETENCIAS", "RESULTADOS DE APRENDIZAJE DE LA ASIGNATURA",
+        "RESULTADOS DE APRENDIZAJE", "CONTENIDOS GENERALES",
+        "OBJETIVOS DE LA ASIGNATURA", "CARACTERIZACIÓN DE LA ASIGNATURA",
+        "CARACTERIZACION DE LA ASIGNATURA", "METODOLOGÍA", "METODOLOGIA",
+        "PROCEDIMIENTOS DE EVALUACIÓN", "PROCEDIMIENTOS DE EVALUACION",
+        "BIBLIOGRAFÍA - FUENTES DE CONSULTA", "BIBLIOGRAFIA - FUENTES DE CONSULTA",
       ]);
       const etiquetasEditorSet = new Set(etiquetasDelEditor.map(e => e.texto));
 
       const lineas = textoCompleto.split("\n").map(l => l.trim()).filter(l => l.length > 0);
       for (const etq of etiquetasDelEditor) {
-        // SKIP etiquetas que ya tienen dato de las tablas HTML
-        if (wordData[etq.texto]) continue;
         // SKIP etiquetas cortas o estructurales que generan falsos positivos
         if (etiquetasCortas.has(etq.texto)) continue;
         if (etiquetasCortas.has(etq.texto.normalize("NFD").replace(/[\u0300-\u036f]/g, ""))) continue;
@@ -430,17 +476,51 @@ const handleSmartSync = async (event: React.ChangeEvent<HTMLInputElement>) => {
           
           // Si la linea contiene EXACTAMENTE la etiqueta (o la etiqueta es parte de la linea)
           if (lineaUpper === etq.texto || lineaUpper.startsWith(etq.texto)) {
-            // El valor es lo que viene despues de la etiqueta en la misma linea
-            let valor = lineas[li].substring(etq.texto.length).trim();
-            // Si no hay valor en la misma linea, buscar en la siguiente
-            if (valor.length < 2 && li + 1 < lineas.length) {
-              valor = lineas[li + 1].trim();
+            // Recolectar TODO el contenido debajo de esta etiqueta hasta la siguiente etiqueta conocida
+            let valorLineas: string[] = [];
+            // Valor en la misma linea (despues de la etiqueta)
+            const restoLinea = lineas[li].substring(etq.texto.length).trim();
+            if (restoLinea.length > 0) valorLineas.push(restoLinea);
+            
+            // Recolectar lineas siguientes hasta encontrar otra etiqueta del editor
+            // O encontrar un encabezado de seccion conocido
+            const seccionesConocidas = [
+              'RESULTADOS DE APRENDIZAJE DE LA ASIGNATURA', 'RESULTADOS DE APRENDIZAJE',
+              'CONTENIDOS GENERALES', 'CONTENIDOS DE LA ASIGNATURA',
+              'OBJETIVOS DE LA ASIGNATURA', 'CARACTERIZACIÓN DE LA ASIGNATURA',
+              'CARACTERIZACION DE LA ASIGNATURA', 'COMPETENCIAS',
+              'METODOLOGÍA', 'METODOLOGIA', 'BIBLIOGRAFÍA', 'BIBLIOGRAFIA',
+              'PROCEDIMIENTOS DE EVALUACIÓN', 'PROCEDIMIENTOS DE EVALUACION',
+              'UNIDADES TEMÁTICAS', 'UNIDADES TEMATICAS',
+              'PROGRAMA ANALÍTICO DE ASIGNATURA', 'PROGRAMA ANALITICO DE ASIGNATURA',
+            ];
+            for (let lj = li + 1; lj < lineas.length; lj++) {
+              const ljUpper = lineas[lj].toUpperCase().trim();
+              // Verificar si esta linea es el inicio de OTRA etiqueta del editor
+              const esOtraEtiqueta = etiquetasDelEditor.some(e => 
+                ljUpper === e.texto || (ljUpper.startsWith(e.texto) && e.texto.length >= 6)
+              );
+              if (esOtraEtiqueta) break;
+              // Verificar si es una seccion conocida (que no sea la misma etiqueta que estamos buscando)
+              const esSeccionConocida = seccionesConocidas.some(s => ljUpper === s && s !== etq.texto);
+              if (esSeccionConocida) break;
+              valorLineas.push(lineas[lj]);
             }
+            
+            const valor = valorLineas.join('\n').trim();
             // NO agregar si el valor es OTRA etiqueta del editor (es un sub-header, no un dato)
-            if (valor.length > 0 && !etiquetasEditorSet.has(valor.toUpperCase()) && !wordData[etq.texto]) {
-              wordData[etq.texto] = valor;
-              console.log("  [texto-directo] " + etq.texto + " -> " + valor.substring(0, 60));
+            if (valor.length > 0 && !etiquetasEditorSet.has(valor.toUpperCase())) {
+              // Si ya existe valor del HTML pero es mas corto, REEMPLAZAR con el mas completo
+              const existente = wordData[etq.texto];
+              // Override si: no existe, O es significativamente mas largo, O tiene mas lineas (mas resultados separados)
+              const valorTieneMasLineas = existente && valor.split('\n').length > existente.split('\n').length;
+              const valorEsMasLargo = existente && valor.length > existente.length * 1.3 && valor.length > 60;
+              if (!existente || valorEsMasLargo || valorTieneMasLineas) {
+                wordData[etq.texto] = valor;
+                console.log("  [texto-directo" + (existente ? " OVERRIDE" : "") + "] " + etq.texto + " -> " + valor.substring(0, 80));
+              }
             }
+            break; // Solo el primer match
           }
         }
       }
@@ -551,26 +631,23 @@ const handleSmartSync = async (event: React.ChangeEvent<HTMLInputElement>) => {
             // Separar resultados individuales del texto original (antes de limpiar)
             const datoOriginal = String(dato);
             
-            // Patron flexible: "resultado-X :" o "resultado-X:" o "resultado X:" (con/sin espacio y guion)
             const regResultadoSplit = /(?=resultado[\s\-]*\d+\s*:)/gi;
             const regResultadoClean = /^resultado[\s\-]*\d+\s*:/i;
             
-            // METODO 1: Separar por "resultado-X:" / "resultado-X :" / "resultado X:"
+            // METODO 1: Separar por "resultado-X:"
             let partesResultados = datoOriginal.split(regResultadoSplit).filter(p => p.trim().length > 0);
-            // Limpiar prefijos de cada parte
             partesResultados = partesResultados.map(p => p.replace(regResultadoClean, "").trim()).filter(p => p.length > 0);
             
-            // METODO 2: Si solo hay 1 o 0, intentar separar por categorías comunes
+            // METODO 2: Separar por categorías tipo "Actitudinales:", "Procedimentales:", etc.
             if (partesResultados.length <= 1) {
-              const porCategorias = datoOriginal.split(/(?=(?:Actitudinales|Procedimentales|Conceptuales|Cognitivos|Praxiol[oó]gicos)\s*:)/i).filter(p => p.trim().length > 0);
-              // Limpiar prefijos resultado-X: de cada parte y descartar partes que son solo prefijo
+              const porCategorias = datoOriginal.split(/(?=(?:Actitudinales|Procedimentales|Conceptuales|Cognitivos|Praxiol[oó]gicos|Axiológicos|Axiologicos)\s*:)/i).filter(p => p.trim().length > 0);
               const limpias = porCategorias.map(p => p.replace(regResultadoClean, "").trim()).filter(p => p.length > 3);
-              if (limpias.length >= 1) {
+              if (limpias.length > 1) {
                 partesResultados = limpias;
               }
             }
 
-            // METODO 3: Si aun solo hay 1, intentar separar por saltos de linea simples
+            // METODO 3: Separar por saltos de línea
             if (partesResultados.length <= 1) {
               const textoLimpio = datoOriginal.replace(regResultadoClean, "").trim();
               const porLineas = textoLimpio.split(/\n/).map(l => l.trim()).filter(l => l.length > 10);
@@ -578,23 +655,65 @@ const handleSmartSync = async (event: React.ChangeEvent<HTMLInputElement>) => {
                 partesResultados = porLineas;
               }
             }
+
+            // METODO 4: Separar por puntos seguidos de mayúscula (patrones de oración)
+            if (partesResultados.length <= 1) {
+              const textoLimpio = datoOriginal.replace(regResultadoClean, "").trim();
+              const porOraciones = textoLimpio.split(/\.\s+(?=[A-ZÁÉÍÓÚÑ])/).map(l => l.trim()).filter(l => l.length > 20);
+              if (porOraciones.length > 1 && porOraciones.length <= celda.rowSpan * 2) {
+                // Distribuir oraciones entre las celdas disponibles
+                const maxSlots = celda.rowSpan;
+                if (porOraciones.length <= maxSlots) {
+                  partesResultados = porOraciones.map((o, i) => i < porOraciones.length - 1 ? o + '.' : o);
+                } else {
+                  // Más oraciones que slots: agrupar
+                  const perSlot = Math.ceil(porOraciones.length / maxSlots);
+                  partesResultados = [];
+                  for (let si = 0; si < maxSlots; si++) {
+                    const start = si * perSlot;
+                    const end = Math.min(start + perSlot, porOraciones.length);
+                    const chunk = porOraciones.slice(start, end).join('. ');
+                    if (chunk.trim()) partesResultados.push(chunk.trim() + (end < porOraciones.length ? '.' : ''));
+                  }
+                }
+              }
+            }
+
+            // METODO 5: Si todo falla y el texto es largo, dividir equitativamente por tamaño
+            if (partesResultados.length <= 1 && datoOriginal.length > 100) {
+              const textoLimpio = datoOriginal.replace(regResultadoClean, "").trim();
+              const maxSlots = celda.rowSpan;
+              // Intentar dividir en puntos naturales (punto, punto y coma, coma antes de "y")
+              const fragmentos = textoLimpio.split(/(?<=\.)\s+|(?<=;)\s+/).map(f => f.trim()).filter(f => f.length > 5);
+              if (fragmentos.length >= maxSlots) {
+                const perSlot = Math.ceil(fragmentos.length / maxSlots);
+                partesResultados = [];
+                for (let si = 0; si < maxSlots; si++) {
+                  const start = si * perSlot;
+                  const end = Math.min(start + perSlot, fragmentos.length);
+                  const chunk = fragmentos.slice(start, end).join(' ');
+                  if (chunk.trim()) partesResultados.push(chunk.trim());
+                }
+              } else if (fragmentos.length > 1) {
+                partesResultados = fragmentos;
+              }
+            }
+
+            // METODO 6: Último recurso - poner TODO el texto en la primera celda
+            if (partesResultados.length === 0) {
+              const textoLimpio = datoOriginal.replace(regResultadoClean, "").trim();
+              if (textoLimpio.length > 0) {
+                partesResultados = [textoLimpio];
+              }
+            }
             
             console.log("RESULTADOS MULTIPLES: " + partesResultados.length + " encontrados (rowSpan=" + celda.rowSpan + ")");
             console.log("  DATO COMPLETO RESULTADOS (largo=" + datoOriginal.length + "):");
-            // Mostrar el dato en chunks de 200 chars para ver TODO
             for (let ci = 0; ci < datoOriginal.length; ci += 200) {
               console.log("    [" + ci + "-" + Math.min(ci+200, datoOriginal.length) + "]: " + datoOriginal.substring(ci, ci + 200));
             }
-            // Mostrar si contiene los patrones que buscamos (con espacio flexible)
-            console.log("  Contiene 'resultado 1'? " + /resultado[\s\-]*1\s*:/i.test(datoOriginal));
-            console.log("  Contiene 'resultado 2'? " + /resultado[\s\-]*2\s*:/i.test(datoOriginal));
-            console.log("  Contiene 'resultado 3'? " + /resultado[\s\-]*3\s*:/i.test(datoOriginal));
-            console.log("  Contiene 'Actitudinales'? " + /Actitudinales/i.test(datoOriginal));
-            console.log("  Contiene 'Procedimentales'? " + /Procedimentales/i.test(datoOriginal));
-            console.log("  Contiene 'Conceptuales'? " + /Conceptuales/i.test(datoOriginal));
-            console.log("  Contiene newlines? " + datoOriginal.includes("\n"));
             if (partesResultados.length > 0) {
-              partesResultados.forEach((p, pi) => console.log("  -> Parte " + (pi+1) + ": " + p.substring(0, 80)));
+              partesResultados.forEach((p, pi) => console.log("  -> Parte " + (pi+1) + ": " + p.substring(0, 100)));
             }
             
             if (partesResultados.length > 0) {
@@ -1222,8 +1341,13 @@ function buscarEnWordData(wordData: Record<string, any>, etiqueta: string): any 
       setActiveProgramaAnaliticoId(editorData.id);
       setActiveTabId(editorData.tabs[0]?.id || null);
       
-      // Establecer el periodo seleccionado
-      setSelectedPeriod(ProgramaAnaliticoToLoad.periodo);
+      // Establecer el periodo seleccionado (solo si tiene valor)
+      if (ProgramaAnaliticoToLoad.periodo) {
+        // Resolver: si es un ID numérico, buscar el nombre correspondiente
+        const periodoVal = ProgramaAnaliticoToLoad.periodo;
+        const periodoObj = periodos.find((p: any) => p.id?.toString() === String(periodoVal));
+        setSelectedPeriod(periodoObj ? periodoObj.nombre : periodoVal);
+      }
       console.log("✅ ProgramaAnalitico cargado exitosamente");
       console.log("   - ID:", editorData.id);
       console.log("   - Nombre:", editorData.name);
@@ -1440,7 +1564,10 @@ function buscarEnWordData(wordData: Record<string, any>, etiqueta: string): any 
         const rowData: TableRow = {
             id: `row-${Date.now()}-${rIdx}`,
             cells: cells.map((td, cIdx) => {
-                const content = td.textContent?.trim() || "";
+                const pEls = Array.from(td.querySelectorAll('p'));
+                const content = pEls.length > 0 
+                  ? pEls.map(p => (p.textContent || '').trim()).filter(t => t).join('\n')
+                  : (td.textContent?.trim() || '');
                 
                 // Detección heurística de headers y orientación
                 const isBold = !!td.querySelector("strong, b") || td.tagName === "TH";
@@ -1649,267 +1776,212 @@ function buscarEnWordData(wordData: Record<string, any>, etiqueta: string): any 
   };
 
   const handlePrintToPdf = async () => { 
-    if(!activeProgramaAnalitico || !activeTab) return;
+    if(!activeProgramaAnalitico) return;
 
-    // Usar orientación landscape para más espacio horizontal
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
+    // Helper local para formatear periodo
+    const fmtPeriodo = (periodoIdOrName: string) => {
+      if (!periodoIdOrName) return "";
+      const periodoObj = periodos.find((p: any) => p.id?.toString() === periodoIdOrName);
+      const nombre = periodoObj?.nombre || periodoIdOrName;
+      const match = nombre.match(/(P[IVX]+\s\d{4})/i);
+      return match ? match[0].toUpperCase() : nombre;
+    };
 
-    // Cargar el logo de la universidad
-    let logoLoaded = false;
-    try {
-      const logoImg = new Image();
-      logoImg.crossOrigin = 'anonymous';
-      await new Promise<void>((resolve, reject) => {
-        logoImg.onload = () => resolve();
-        logoImg.onerror = () => reject(new Error('No se pudo cargar el logo'));
-        logoImg.src = '/images/unesum-logo-official.png';
-      });
-      
-      // Dibujar logo a la izquierda del encabezado
-      const logoWidth = 20;
-      const logoHeight = 20;
-      doc.addImage(logoImg, 'PNG', 12, 3, logoWidth, logoHeight);
-      logoLoaded = true;
-    } catch (e) {
-      console.warn('⚠️ No se pudo cargar el logo para el PDF:', e);
-    }
+    // =================================================================
+    // GENERAR PDF VÍA HTML NATIVO — preserva la estructura EXACTA
+    // de rowSpan/colSpan de todas las tablas sin alterar nada
+    // =================================================================
+    const allTabs = activeProgramaAnalitico.tabs;
+    let tablesHtml = '';
 
-    // Encabezado del documento (centrado, con espacio para el logo)
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text("UNIVERSIDAD ESTATAL DEL SUR DE MANABÍ", pageWidth / 2, 8, { align: 'center' });
-    
-    doc.setFontSize(12);
-    doc.text("PROGRAMA ANALÍTICO DE ASIGNATURA", pageWidth / 2, 14, { align: 'center' });
-    
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text(activeProgramaAnalitico.name, pageWidth / 2, 20, { align: 'center' });
+    for (let tabIdx = 0; tabIdx < allTabs.length; tabIdx++) {
+      const tab = allTabs[tabIdx];
+      if (!tab || !tab.rows || tab.rows.length === 0) continue;
 
-    doc.setFontSize(8);
-    doc.text(`${activeTab.title}`, pageWidth / 2, 25, { align: 'center' });
-
-    // Construir body respetando rowSpan y colSpan
-    // IMPORTANTE: Aplicar auto-llenado de ASIGNATURA, NIVEL y PERIODO como se ve en pantalla
-    const body: any[][] = [];
-
-    for (let r = 0; r < activeTab.rows.length; r++) {
-      const row = activeTab.rows[r];
-      const pdfRow: any[] = [];
-
-      for (let c = 0; c < row.cells.length; c++) {
-        const cell = row.cells[c];
-
-        // Saltar celdas con rowSpan=0 o colSpan=0 (ocultas por merge)
-        if (cell.rowSpan === 0 || cell.colSpan === 0) continue;
-
-        // Obtener contenido: usar auto-llenado para las primeras filas (ASIGNATURA, NIVEL, PERIODO)
-        let content = cell.content || '';
-        
-        if (r <= 5 && asignaturaInfo && c > 0) {
-          const cellIzquierda = row.cells[c - 1];
-          const etiqueta = (cellIzquierda?.content || '').toUpperCase().trim();
-          
-          if (etiqueta === "ASIGNATURA" && !content) {
-            content = `${asignaturaInfo.codigo || ""} - ${asignaturaInfo.nombre || ""}`;
-          } else if ((etiqueta === "PERIODO ACADÉMICO ORDINARIO (PAO)" || etiqueta === "PAO" || etiqueta === "PERIODO") && !content) {
-            const periodoNombre = periodos.find(p => p.id?.toString() === selectedPeriod)?.nombre || selectedPeriod;
-            content = formatPeriodoSimple(periodoNombre) || '';
-          } else if (etiqueta === "NIVEL" && !content) {
-            content = asignaturaInfo.nivel?.nombre || '';
-          }
-        }
-
-        if (cell.textOrientation === 'vertical' && content) {
-          content = content.split('').join('\n');
-        }
-
-        pdfRow.push({
-          content: content,
-          rowSpan: cell.rowSpan || 1,
-          colSpan: cell.colSpan || 1,
-          styles: {
-            fontStyle: cell.isHeader ? 'bold' : 'normal',
-            fillColor: cell.backgroundColor || (cell.isHeader ? '#E5E7EB' : '#FFFFFF'),
-            textColor: cell.textColor || '#1F2937',
-            fontSize: cell.textOrientation === 'vertical' ? 6 : 8,
-            cellPadding: 2,
-            halign: cell.isHeader ? 'center' : (cell.textAlign as any || 'left'),
-            valign: 'middle',
-            minCellHeight: cell.textOrientation === 'vertical' ? 30 : 8,
-            cellWidth: cell.textOrientation === 'vertical' ? 10 : 'auto',
-            overflow: 'linebreak',
-          }
-        });
+      // Título de sección
+      const isVisado = tab.title.toUpperCase().includes('VISADO') || tab.title.toUpperCase().includes('LEGALIZACIÓN');
+      // Renombrar "SECCIÓN 1" → "DATOS GENERALES"
+      let displayTitle = tab.title.toUpperCase();
+      if (/SECCI[OÓ]N\s*1/i.test(displayTitle)) displayTitle = 'DATOS GENERALES';
+      if (allTabs.length > 1) {
+        tablesHtml += `<h3 style="margin-top:14px;margin-bottom:4px;font-size:10pt;color:#000;border-bottom:1.5pt solid #000;padding-bottom:2px;font-weight:bold;text-align:center;">${displayTitle}</h3>`;
       }
 
-      if (pdfRow.length > 0) {
-        body.push(pdfRow);
+      // Contar columnas para escalar fuente en tablas anchas
+      let firstRowCols = 0;
+      for (const c of tab.rows[0]?.cells || []) {
+        if (c.rowSpan !== 0 && c.colSpan !== 0) firstRowCols += (c.colSpan || 1);
       }
-    }
+      const isWideTable = firstRowCols > 6;
+      const baseFontSize = isWideTable ? '7.5pt' : '9pt';
+      const vertFontSize = isWideTable ? '6.5pt' : '7pt';
 
-    autoTable(doc, {
-      body: body as any,
-      startY: 28,
-      theme: 'grid',
-      styles: {
-        fontSize: 8,
-        cellPadding: 2,
-        lineColor: '#9CA3AF',
-        lineWidth: 0.3,
-        overflow: 'linebreak',
-      },
-      headStyles: {
-        fillColor: '#E5E7EB',
-        textColor: '#1F2937',
-        fontStyle: 'bold',
-      },
-      margin: { left: 10, right: 10 },
-      tableWidth: 'auto',
-    });
+      // Construir tabla HTML fiel a la estructura original
+      tablesHtml += `<table style="${isWideTable ? 'font-size:' + baseFontSize + ';' : ''}">`;
+      for (let rowIdx = 0; rowIdx < tab.rows.length; rowIdx++) {
+        const row = tab.rows[rowIdx];
+        tablesHtml += '<tr>';
+        for (let cellIdx = 0; cellIdx < row.cells.length; cellIdx++) {
+          const cell = row.cells[cellIdx];
+          if (cell.rowSpan === 0 || cell.colSpan === 0) continue;
 
-    // ==============================
-    // SECCIÓN DE FIRMAS (4 columnas)
-    // ==============================
-    // Buscar nombres de las autoridades en TODAS las pestañas del programa analítico
-    const cargos: { cargo: string; nombre: string; patrones: string[] }[] = [
-      { cargo: "DECANO/A DE FACULTAD", nombre: "", patrones: ["DECANO/A DE FACULTAD", "DECANO DE FACULTAD", "DECANA DE FACULTAD", "DECANO/A"] },
-      { cargo: "DIRECTOR/A ACADÉMICO/A", nombre: "", patrones: ["DIRECTOR/A ACADEMICO", "DIRECTOR/A ACADÉMICO", "DIRECTOR ACADEMICO", "DIRECTORA ACADEMICA"] },
-      { cargo: "COORDINADOR/A DE CARRERA", nombre: "", patrones: ["COORDINADOR/A DE CARRERA", "COORDINADOR DE CARRERA", "COORDINADORA DE CARRERA"] },
-      { cargo: "DOCENTE", nombre: "", patrones: ["DOCENTE"] },
-    ];
+          const isHeader = cell.isHeader;
+          const isVertical = cell.textOrientation === 'vertical';
+          const isSep = cell.content.trim() === ':';
 
-    // Recorrer todas las pestañas buscando los nombres asociados a cada cargo
-    // Priorizar pestaña VISADO si existe
-    const tabsOrdenadas = [...activeProgramaAnalitico.tabs].sort((a, b) => {
-      const aVisado = a.title.toUpperCase().includes("VISADO") ? 0 : 1;
-      const bVisado = b.title.toUpperCase().includes("VISADO") ? 0 : 1;
-      return aVisado - bVisado;
-    });
+          // === AUTO-LLENADO: misma lógica que getAutoFilledContent ===
+          let rawContent = cell.content || '';
+          if (asignaturaInfo && rowIdx <= 5 && cellIdx > 0) {
+            const cellIzquierda = row.cells[cellIdx - 1];
+            const etiqueta = (cellIzquierda?.content || '').toUpperCase().trim();
+            if (etiqueta === 'ASIGNATURA' && !rawContent.trim()) {
+              rawContent = `${asignaturaInfo.codigo || ''} - ${asignaturaInfo.nombre || ''}`;
+            } else if ((etiqueta === 'PERIODO ACADÉMICO ORDINARIO (PAO)' || etiqueta === 'PAO') && !rawContent.trim()) {
+              rawContent = fmtPeriodo(selectedPeriod) || rawContent;
+            } else if (etiqueta === 'NIVEL' && !rawContent.trim()) {
+              rawContent = asignaturaInfo.nivel?.nombre || '';
+            }
+          }
 
-    for (const tab of tabsOrdenadas) {
-      for (let r = 0; r < tab.rows.length; r++) {
-        const row = tab.rows[r];
-        for (let c = 0; c < row.cells.length; c++) {
-          const cell = row.cells[c];
-          const textoRaw = (cell.content || '').trim();
-          if (!textoRaw || textoRaw.length < 4) continue;
-          const textoNorm = textoRaw.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-          
-          // Verificar si esta celda contiene un cargo
-          for (const cargoObj of cargos) {
-            if (cargoObj.nombre) continue; // Ya encontramos un nombre para este cargo
-            
-            const matched = cargoObj.patrones.some(p => {
-              const pNorm = p.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-              return textoNorm.includes(pNorm);
+          // Contenido — preservar saltos de línea
+          // Limpiar encabezados de sección que se hayan filtrado por error
+          const seccionesLeaked = [
+            'RESULTADOS DE APRENDIZAJE DE LA ASIGNATURA',
+            'RESULTADOS DE APRENDIZAJE',
+            'CONTENIDOS GENERALES',
+            'CONTENIDOS DE LA ASIGNATURA',
+            'OBJETIVOS DE LA ASIGNATURA',
+            'COMPETENCIAS',
+            'CARACTERIZACIÓN DE LA ASIGNATURA',
+            'PROGRAMA ANALÍTICO DE ASIGNATURA',
+          ];
+          // Detectar si la celda de la izquierda es una etiqueta de sección
+          const leftLabel = (cellIdx > 0 ? (row.cells[cellIdx - 1]?.content || '') : '').toUpperCase().trim();
+          if (leftLabel && seccionesLeaked.some(s => leftLabel.includes(s.substring(0, 10)))) {
+            // Limpiar líneas que sean exactamente otro encabezado de sección
+            const lineasRaw = rawContent.split('\n');
+            const lineasLimpias = lineasRaw.filter(l => {
+              const lu = l.trim().toUpperCase();
+              return !seccionesLeaked.some(s => lu === s);
             });
-            
-            if (!matched) continue;
-
-            // Buscar el nombre de la persona asociada
-            // Caso especial: si la celda contiene "CARGO\nNombre" (cargo y nombre en la misma celda)
-            const lineas = textoRaw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-            if (lineas.length >= 2) {
-              // La primera línea es el cargo, la segunda puede ser el nombre
-              const posibleNombre = lineas.find(l => {
-                const lu = l.toUpperCase();
-                return !lu.includes("DECANO") && !lu.includes("DIRECTOR") && 
-                       !lu.includes("COORDINADOR") && !lu.includes("DOCENTE") &&
-                       !lu.includes("FACULTAD") && !lu.includes("CARRERA") &&
-                       !lu.includes("ACADÉMICO") && !lu.includes("ACADEMICO") &&
-                       l.length > 5;
-              });
-              if (posibleNombre) {
-                cargoObj.nombre = posibleNombre;
-                continue;
-              }
-            }
-            
-            // Opción 1: celda siguiente en la misma fila
-            if (c + 1 < row.cells.length) {
-              const nextCell = row.cells[c + 1];
-              const nextContent = (nextCell.content || '').trim();
-              if (nextContent && nextContent.length > 3) {
-                const nu = nextContent.toUpperCase();
-                if (!nu.includes("DECANO") && !nu.includes("DIRECTOR") &&
-                    !nu.includes("COORDINADOR") && !nu.includes("ACADÉMICO") &&
-                    !nu.includes("CARRERA") && !nu.includes("FACULTAD")) {
-                  cargoObj.nombre = nextContent;
-                  continue;
-                }
-              }
-            }
-            
-            // Opción 2: fila siguiente, misma columna
-            if (r + 1 < tab.rows.length) {
-              const nextRow = tab.rows[r + 1];
-              if (c < nextRow.cells.length) {
-                const belowCell = nextRow.cells[c];
-                const belowContent = (belowCell.content || '').trim();
-                if (belowContent && belowContent.length > 3) {
-                  const bu = belowContent.toUpperCase();
-                  if (!bu.includes("DECANO") && !bu.includes("DIRECTOR") &&
-                      !bu.includes("COORDINADOR") && !bu.includes("ACADÉMICO") &&
-                      !bu.includes("CARRERA") && !bu.includes("FACULTAD")) {
-                    cargoObj.nombre = belowContent;
-                  }
-                }
-              }
-            }
+            rawContent = lineasLimpias.join('\n').trim();
           }
+          const content = rawContent.replace(/\n/g, '<br/>');
+
+          // Estilos fieles al documento Word original
+          const bg = cell.backgroundColor || (isHeader ? '#D9E2EC' : '#fff');
+          const color = cell.textColor || '#000';
+          const fw = isHeader ? 'bold' : 'normal';
+          const ta = isSep || isHeader || isVertical ? 'center' : (cell.textAlign || 'left');
+          const fs = isVertical ? vertFontSize : baseFontSize;
+          const defaultPad = isVisado ? '40px 6px 6px 6px' : (isWideTable ? '2px 4px' : '4px 6px');
+          const pad = isVertical ? '2px 1px' : (isSep ? '1px 2px' : defaultPad);
+
+          let extraCss = '';
+          if (isVertical) {
+            extraCss = 'writing-mode:vertical-rl;transform:rotate(180deg);min-height:80px;max-width:30px;white-space:nowrap;';
+          }
+          if (isSep) {
+            extraCss += 'max-width:14px;white-space:nowrap;';
+          }
+
+          // Ancho inteligente según tipo de contenido
+          const contentText = (rawContent || '').trim();
+          const contentLen = contentText.length;
+          const isNumericOnly = /^\d{1,4}$/.test(contentText);
+          let widthCss = '';
+          if (isVertical) {
+            widthCss = 'width:28px;max-width:32px;';
+          } else if (isSep) {
+            widthCss = 'width:14px;max-width:16px;';
+          } else if (isNumericOnly && contentLen <= 3) {
+            widthCss = 'width:35px;white-space:nowrap;text-align:center;';
+          } else if (isHeader && contentLen <= 4 && cell.colSpan === 1 && !isVertical) {
+            widthCss = 'width:40px;white-space:nowrap;text-align:center;';
+          } else if (cellIdx === 0 && !isVertical && !isSep && cell.colSpan === 1) {
+            widthCss = isWideTable ? 'width:10%;min-width:70px;' : 'width:18%;min-width:100px;';
+          }
+
+          tablesHtml += `<td rowspan="${cell.rowSpan||1}" colspan="${cell.colSpan||1}" style="border:1pt solid #000;padding:${pad};background:${bg};color:${color};font-weight:${fw};text-align:${ta};vertical-align:middle;font-size:${fs};line-height:1.3;word-break:break-word;${widthCss}${extraCss}">${content || '&nbsp;'}</td>`;
         }
+        tablesHtml += '</tr>';
       }
+      tablesHtml += '</table>';
     }
 
-    // Calcular posición Y después de la tabla (compatible con jspdf-autotable v3/v5)
-    const finalY = (doc as any).lastAutoTable?.finalY 
-      || (doc as any).previousAutoTable?.finalY 
-      || 25;
-    let firmaY = finalY + 20;
+    const programaName = activeProgramaAnalitico.name || 'Programa Analítico';
 
-    // Si no cabe en la página actual, agregar nueva página
-    if (firmaY + 45 > pageHeight) {
-      doc.addPage();
-      firmaY = 30;
-    }
+    const htmlDoc = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title> </title>
+<style>
+  @page { size: A4 landscape; margin: 0; }
+  @media print {
+    html, body { margin:0; padding: 10mm 12mm; }
+    body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+    table { page-break-inside:auto; }
+    tr { page-break-inside:avoid; page-break-after:auto; }
+    h3 { page-break-after:avoid; }
+  }
+  * { box-sizing:border-box; }
+  body {
+    font-family: Calibri, 'Segoe UI', Arial, Helvetica, sans-serif;
+    margin: 0;
+    padding: 0 14px;
+    color: #000;
+    font-size: 9pt;
+    line-height: 1.3;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 4px;
+    table-layout: auto;
+  }
+  td {
+    border: 1pt solid #000;
+    padding: 3px 5px;
+    vertical-align: middle;
+    font-size: 8pt;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+  .hdr {
+    text-align: center;
+    padding: 6px 0 10px 0;
+    border-bottom: 2pt solid #000;
+    margin-bottom: 8px;
+  }
+  .hdr img { height: 55px; vertical-align: middle; margin-right: 10px; }
+  .hdr-text { display: inline-block; vertical-align: middle; text-align: center; }
+  .hdr-text h1 { font-size: 14pt; margin: 0; font-weight: bold; color: #000; }
+  .hdr-text h2 { font-size: 12pt; margin: 2px 0 0 0; font-weight: bold; color: #000; }
+  .hdr-text p  { font-size: 10pt; margin: 2px 0 0 0; font-weight: bold; color: #000; }
+</style>
+</head>
+<body>
+  <div class="hdr">
+    <img src="/images/unesum-logo-official.png" onerror="this.style.display='none'" />
+    <div class="hdr-text">
+      <h1>UNIVERSIDAD ESTATAL DEL SUR DE MANABÍ</h1>
+      <h2>PROGRAMA ANALÍTICO DE ASIGNATURA</h2>
+      <p>${programaName}</p>
+    </div>
+  </div>
+  ${tablesHtml}
+</body>
+</html>`;
 
-    // Dibujar sección de firmas
-    const marginLeft = 15;
-    const marginRight = 15;
-    const usableWidth = pageWidth - marginLeft - marginRight;
-    const colWidth = usableWidth / 4;
-    const lineLength = colWidth - 15;
-
-    // Título de sección
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.text("FIRMAS DE RESPONSABILIDAD", pageWidth / 2, firmaY, { align: 'center' });
-    firmaY += 15;
-
-    for (let i = 0; i < cargos.length; i++) {
-      const x = marginLeft + (colWidth * i) + (colWidth / 2);
-      
-      // Línea de firma
-      doc.setLineWidth(0.5);
-      doc.setDrawColor(0, 0, 0);
-      doc.line(x - lineLength / 2, firmaY, x + lineLength / 2, firmaY);
-
-      // Nombre de la persona (debajo de la línea)
-      doc.setFontSize(7);
-      doc.setFont("helvetica", "normal");
-      const nombre = cargos[i].nombre || "________________________";
-      doc.text(nombre, x, firmaY + 5, { align: 'center', maxWidth: lineLength });
-
-      // Cargo (debajo del nombre)
-      doc.setFontSize(7);
-      doc.setFont("helvetica", "bold");
-      doc.text(cargos[i].cargo, x, firmaY + 12, { align: 'center', maxWidth: lineLength });
-    }
-
-    doc.save(`${activeProgramaAnalitico.name}_${activeTab.title}.pdf`);
+    // Abrir ventana y lanzar impresión (Guardar como PDF)
+    const w = window.open('', '_blank', 'width=1100,height=800');
+    if (!w) { alert('Permite ventanas emergentes para generar el PDF.'); return; }
+    w.document.write(htmlDoc);
+    w.document.close();
+    const triggerPrint = () => { try { w.focus(); w.print(); } catch(_){} };
+    w.onload = () => setTimeout(triggerPrint, 400);
+    setTimeout(triggerPrint, 1500);
   }
 
   // ==============================
@@ -2385,12 +2457,33 @@ function buscarEnWordData(wordData: Record<string, any>, etiqueta: string): any 
             // Obtenemos el contenido (ya sea del word o auto-llenado)
             const displayContent = getAutoFilledContent(cell, rowIndex, cellIndex);
 
-            // --- LÓGICA DE ANCHOS ---
-            let widthStyle = 'auto';
-            let minWidthStyle = isVertical ? '40px' : (cell.content.length > 5 || isHeader ? '120px' : '40px');
-            if (isFormRow) {
-              if (cellIndex === 0) widthStyle = '20%';
-              else if (cellIndex === 1) widthStyle = '1%';
+            // --- LÓGICA DE ANCHOS INTELIGENTE ---
+            const cellText = (cell.content || '').trim();
+            const cellLen = cellText.length;
+            const isNumericCell = /^\d{1,4}$/.test(cellText);
+            const isShortHeader = isHeader && cellLen <= 5 && cell.colSpan === 1 && !isVertical;
+            
+            let widthStyle: string = 'auto';
+            let minWidthStyle: string = '40px';
+            let maxWidthStyle: string | undefined = undefined;
+
+            if (isVertical) {
+              minWidthStyle = '30px';
+              maxWidthStyle = '36px';
+            } else if (isSeparator) {
+              minWidthStyle = '14px';
+              maxWidthStyle = '18px';
+            } else if (isNumericCell && cellLen <= 3) {
+              minWidthStyle = '30px';
+              maxWidthStyle = '50px';
+            } else if (isShortHeader) {
+              minWidthStyle = '35px';
+              maxWidthStyle = '55px';
+            } else if (isFormRow) {
+              if (cellIndex === 0) { widthStyle = '20%'; minWidthStyle = '100px'; }
+              else if (cellIndex === 1) { widthStyle = '1%'; minWidthStyle = '14px'; }
+            } else if (cellLen > 5 || isHeader) {
+              minWidthStyle = '80px';
             }
 
             // --- ALINEACIÓN ---
@@ -2401,7 +2494,7 @@ function buscarEnWordData(wordData: Record<string, any>, etiqueta: string): any 
                 key={cell.id}
                 className={`
                   border border-gray-200 relative transition-all duration-75
-                  ${isHeader ? "bg-gray-50 font-semibold text-gray-900" : "bg-white text-gray-700"}
+                  ${isHeader ? "bg-gray-50 font-bold text-black" : "bg-white text-gray-700"}
                   ${isSelected ? "ring-2 ring-inset ring-emerald-500 z-10" : ""}
                   ${isReadOnly ? "bg-gray-100/50 cursor-not-allowed" : "cursor-pointer"}
                 `}
@@ -2410,8 +2503,10 @@ function buscarEnWordData(wordData: Record<string, any>, etiqueta: string): any 
                   color: cell.textColor,
                   width: widthStyle,
                   minWidth: minWidthStyle,
+                  maxWidth: maxWidthStyle,
                   padding: 0,
-                  height: '1px'
+                  height: '1px',
+                  verticalAlign: 'middle',
                 }}
                 rowSpan={cell.rowSpan || 1}
                 colSpan={cell.colSpan || 1}
@@ -2427,8 +2522,9 @@ function buscarEnWordData(wordData: Record<string, any>, etiqueta: string): any 
                   style={{
                     writingMode: isVertical ? 'vertical-rl' : undefined,
                     transform: isVertical ? 'rotate(180deg)' : undefined,
-                    minHeight: isVertical ? '120px' : 'auto',
-                    textAlign: isHeader ? 'center' : 'left'
+                    minHeight: isVertical ? '120px' : '32px',
+                    textAlign: isHeader ? 'center' : 'left',
+                    verticalAlign: 'middle',
                   }}
                 >
                   {editingCell === cell.id ? (

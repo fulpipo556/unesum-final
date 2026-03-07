@@ -1,0 +1,800 @@
+{
+  "id": 47,
+  "nombre": "ProgramaAnalitico",
+  "datos_tabla": {
+    "tabs": [
+      {
+        "id": "tab-0-1770227550436",
+        "rows": [
+          {
+            "id": "row-0-0-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-0-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 5,
+                "content": "PROGRAMA ANALÍTICO DE ASIGNATURA",
+                "rowSpan": 1,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-0-1-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-1-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "ASIGNATURA",
+                "rowSpan": 2,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-1-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 2,
+                "content": "",
+                "rowSpan": 2,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-1-2-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "PERIODO ACADÉMICO ORDINARIO (PAO)",
+                "rowSpan": 1,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-1-3-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "",
+                "rowSpan": 1,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-0-2-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-2-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "NIVEL",
+                "rowSpan": 1,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-2-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "",
+                "rowSpan": 1,
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-0-3-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-3-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "CARACTERIZACIÓN",
+                "rowSpan": 1,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-3-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 4,
+                "content": "Esta asignatura se caracteriza por su enfoque integral en la programación básica y orientada a objetos, con aplicación práctica en la creación ágil de software mediante el uso de lenguajes y tecnologías emergentes, preparando a los estudiantes para afrontar retos empresariales reales. El programa desarrolla intensamente la resolución de problemas, enfocada en diagnosticar y solucionar eficientemente las incidencias del entorno laboral, a la vez que cultiva habilidades blandas clave como el liderazgo (a través de la dirección de equipos ágiles) y la escucha activa (en sesiones de feedback). Todo el proceso está regido por los valores de la excelencia, para garantizar la máxima calidad en el software, y el respeto, fomentando un ambiente de trabajo colaborativo e inclusivo.",
+                "rowSpan": 1,
+                "syncTag": "caracterizacion",
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-0-4-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-4-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "OBJETIVOS DE LA ASIGNATURA",
+                "rowSpan": 1,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-4-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 4,
+                "content": "Objetivo General\nDiseñar aplicaciones informáticas mediante el uso de técnicas de Programación Orientada a Objetos del lenguaje de programación Python para solucionar de manera lógica y sistematizada situaciones de contextos reales.\nObjetivo Especifico\nIdentificar las principales técnicas y principios de la Programación Orientada a Objetos (POO) en el contexto del lenguaje Python, reconociendo su utilidad para el modelado y la resolución de problemas complejos en el desarrollo de aplicaciones informáticas\nAnalizar las técnicas de Programación en Python más adecuadas para modelar y resolver problemas en un contexto real\nElaborar aplicaciones informáticas robustas y eficientes utilizando el lenguaje de programación Python, aplicando los principios de la POO para garantizar soluciones lógicas y sistematizadas.",
+                "rowSpan": 1,
+                "syncTag": "objetivos",
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-0-5-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-5-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "COMPETENCIAS",
+                "rowSpan": 1,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-5-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 4,
+                "content": "Analiza los conceptos y herramientas del lenguaje de programación para aplicarlos en la POO.\nDiseña programas de forma estructurado y modular para solucionar problemas del contexto real\nPromueve el desarrollo de las aplicaciones informáticas con ética y honestidad para obtener un producto transparente y fiable.\nRESULTADOS DE APRENDIZAJE DE LA ASIGNATURA\nActitudinales: Demuestra conciencia sobre la responsabilidad de la ingeniería implica considerar el impacto social y medioambiental de los proyectos, respaldado por habilidades blandas como liderazgo, resolución de problemas y escucha activa para abordar desafíos técnicos y éticos de manera efectiva.\nCognitivos: Utiliza técnicas de abstracción para la construcción y simulación de modelos, en la solución de problemas de Tecnologías de la Información, teniendo como fundamento los conceptos y teorías construidos en el campo de las ciencias básicas.\nProcedimentales: Aplica los principios básicos para generar, almacenar, sintetizar, procesar y transmitir información y datos.\nCONTENIDOS GENERALES",
+                "rowSpan": 1,
+                "syncTag": "competencias",
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-0-6-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-6-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "RESULTADOS D E APRENDIZAJE DE LA ASIGNATURA",
+                "rowSpan": 3,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-6-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 4,
+                "content": "Actitudinales: Demuestra conciencia sobre la responsabilidad de la ingeniería implica considerar el impacto social y medioambiental de los proyectos, respaldado por habilidades blandas como liderazgo, resolución de problemas y escucha activa para abordar desafíos técnicos y éticos de manera efectiva.",
+                "rowSpan": 1,
+                "syncTag": "resultado-1",
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-0-7-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-7-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 4,
+                "content": "Cognitivos: Utiliza técnicas de abstracción para la construcción y simulación de modelos, en la solución de problemas de Tecnologías de la Información, teniendo como fundamento los conceptos y teorías construidos en el campo de las ciencias básicas.",
+                "rowSpan": 1,
+                "syncTag": "resultado-2",
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-0-8-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-8-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 4,
+                "content": "Procedimentales: Aplica los principios básicos para generar, almacenar, sintetizar, procesar y transmitir información y datos.",
+                "rowSpan": 1,
+                "syncTag": "resultado-3",
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-0-9-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-9-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "CONTENIDOS DE LA ASIGNATURA",
+                "rowSpan": 7,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-9-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "UNIDADES TEMÁTICAS",
+                "rowSpan": 1,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-9-2-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 3,
+                "content": "DESCRIPCIÓN",
+                "rowSpan": 1,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-0-10-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-10-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "UT 1: Entorno de la POO -manipulación de objetos",
+                "rowSpan": 1,
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-10-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 3,
+                "content": "En esta unidad, se identifica el entorno de trabajo, operaciones básicas y con POO para la creación de programas, en el marco de tecnologías emergentes.",
+                "rowSpan": 1,
+                "syncTag": "ut-1-descripcion",
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-0-11-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-11-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "UT 2: Servicio de Data Windows – servicio de ventana",
+                "rowSpan": 1,
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-11-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 3,
+                "content": "En esta unidad se crearán estructuras de datos, paquetes y módulos de Python que cumplan una determinada función para consumir un servicio orientados en el marco de las tecnologías emergentes",
+                "rowSpan": 1,
+                "syncTag": "ut-2-descripcion",
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-0-12-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-12-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "UT 3: Conexión a bases de datos en la POO",
+                "rowSpan": 1,
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-12-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 3,
+                "content": "En esta unidad, se realizan conexiones de base de datos en aplicaciones administrativas para la manipulación de datos, en el marco de tecnologías emergentes.",
+                "rowSpan": 1,
+                "syncTag": "ut-3-descripcion",
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-0-13-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-13-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "UT 4: Tecnología Web",
+                "rowSpan": 1,
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-13-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 3,
+                "content": "En esta unidad se aprenderá a crear aplicaciones multiplataforma que puedan hacer ejecutadas en un navegador web acordes a las nuevas tendencias de las tecnologías emergentes",
+                "rowSpan": 1,
+                "syncTag": "ut-4-descripcion",
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-0-14-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-14-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "",
+                "rowSpan": 1,
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-14-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 3,
+                "content": "",
+                "rowSpan": 1,
+                "syncTag": "ut-5-descripcion",
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-0-15-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-15-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "",
+                "rowSpan": 1,
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-15-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 3,
+                "content": "",
+                "rowSpan": 1,
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-0-16-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-16-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "METODOLOGÍA",
+                "rowSpan": 1,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-16-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 4,
+                "content": "Teniendo en cuenta que la asignatura es teórica- práctica se utilizarán para el desarrollo de los contenidos las siguientes metodologías activas: Aprendizaje basado en problemas, Aprendizaje basado en proyectos, Aprendizaje colaborativo y Aula Invertida. Para la utilización de las metodologías de enseñanza  se tendrán en cuenta las diferentes técnicas (Lluvias de ideas, Discusión dirigida, conferencia o exposición, lectura comentada, estudios de casos, controles de lectura, FORO (forma directa) y Mesa redonda) que se encuentran planificadas en los planes de clases,  facilitando de esta forma la comprensión de los contenidos por parte de los estudiantes y una mejor orientación de los temas por parte del profesor, factores de gran valor para la búsqueda del conocimiento.\nLa utilización de estas metodologías proporciona la adquisición de conocimientos, habilidades y destrezas por parte de los estudiantes, desarrollando la memoria comprensiva y los hábitos para reproducir los hechos de la realidad; con exposiciones de casos particulares partiendo de afirmaciones generales; basándose en experiencias que posibiliten la regeneración y razonamiento lógico del pensamiento, como característica esencial, permitiendo alcanzar el desarrollo de capacidades del pensamiento crítico y creativo donde la actividad de aprendizaje está centrada en el estudiante y guiada por el docente.\nLas actividades docentes se desarrollarán en los siguientes escenarios de aprendizaje de manera presencial y de manera virtual (Aula virtual) que permitirá fortalecer el proceso de enseñanza – aprendizaje. El desarrollo de los contenidos se realizará con el apoyo de las bibliografías básicas y complementarias, así como la utilización de materiales didácticos que faciliten la apropiación de los conocimientos de una mejor forma. Se presentará un proyecto multidisciplinario final que tenga relación con las líneas de investigación de la Carrera.\nEl docente actuará como facilitador, y será obligación de los estudiantes traer preparados los temas correspondientes a cada sesión de trabajo, de manera que puedan establecerse intercambios de opiniones sobre los temas tratados.\nDurante su proceso de enseñanza aprendizaje se integrarán las habilidades blandas como el pensamiento creativo, el liderazgo y la resolución de problemas, permitiendo tener un ambiente de aprendizaje dinámico, donde los estudiantes exploran múltiples perspectivas, asumen roles de liderazgo en proyectos grupales y desarrollan competencias sólidas para abordar desafíos complejos con confianza.\nEl estudiante deberá documentar todas las evidencias de las actividades de aprendizaje como: pruebas, trabajos grupales e individuales, deberes, etc., mediante un portafolio virtual o física.\nLos estudiantes podrán contar con las tutorías por parte del docente, según horarios planificados, que se realizarán bajo dos modalidades: Dirigidas: asistirán los estudiantes con mayores dificultades y Grupales: asistirán los estudiantes que deseen participar con el objetivo de aclarar dudas, ampliar conocimientos, etc.",
+                "rowSpan": 1,
+                "syncTag": "metodologia",
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-0-17-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-17-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "PROCEDIMIENTOS DE EVALUACIÓN",
+                "rowSpan": 1,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-17-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 4,
+                "content": "La evaluación de la asignatura tendrá en consideración los siguientes componentes:\nDocencia: 30% correspondiente a 3 puntos\nPrácticas Formativas de Aplicación y Experimentación: 20% correspondiente a 2 puntos\nActividades de trabajo autónomo: 10% correspondiente a 1 punto\nExamen: 40% correspondiente a 4 puntos\n1. En los procedimientos de evaluación se tomará en cuenta los componentes de docencia, este tendrá una valoración de 3 puntos, se tomará en cuenta la calidad y responsabilidad de los trabajos presentados por los estudiantes mediante conferencias, talleres, actividades de aprendizaje colaborativo, semillero de investigación y resolución de problemas.\n2. El componente práctico formativas de aplicación y experimentación tendrá 2 puntos, en los cuales se tomará las prácticas de clase y 1 proyecto práctico previo al examen del segundo parcial, donde se demostrará el dominio de contenidos a través del conocimiento, habilidad, actitud y destreza, desarrollado en cada una de las unidades temáticas.\n3. El componente de actividades de aprendizaje autónomo tiene una valoración de 1 puntos, este comprende el trabajo realizado por el estudiante, el cual debe presentarse en la fecha establecida, estas actividades a desarrollarse son: trabajos enviados a casa mediante el análisis y comprensión de materiales bibliográficos.\n4. El examen tendrá una valoración de 4 puntos, se tomará en cuenta el dominio de contenidos a través del conocimiento, habilidad, actitud y destreza. Desarrollado en los componentes docencia, prácticas de aplicación y experimentación y actividades de aprendizaje.",
+                "rowSpan": 1,
+                "syncTag": "evaluacion",
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-0-18-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-18-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "BIBLIOGRAFÍA - FUENTES DE CONSULTA",
+                "rowSpan": 2,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-18-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "BIBLIOGRAFÍA BÁSICA",
+                "rowSpan": 1,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-18-2-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 3,
+                "content": "B.B.1. Lee, K. D. (2014). Programming fundamentals (2nd ed.). Springer.B.B.2. Stephenson, B. (2014). The Python workbook. Springer.",
+                "rowSpan": 1,
+                "syncTag": "bibliografia-basica",
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-0-19-1770227550436",
+            "cells": [
+              {
+                "id": "cell-0-19-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "BIBLIOGRAFÍA COMPLEMENTARIA",
+                "rowSpan": 1,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-0-19-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 3,
+                "content": "B.C.1. Valverde González, V. L., García Mora, F. A., & Hernández Dávila, E. S. (2023). Python aplicado al mantenimiento industrial. CIDE EDITORIAL.B.C.2. Llerena Izquierdo, J. (2020). Codifica en Python. Universidad Politécnica Salesiana.B.C.3. Condor Tinoco, E. E., & de la cruz Rocca, M. A. (2020). Algoritmos resueltos con Python. EIDEC EDITORIAL. https://doi.org/10.34893/6kbn-5a63",
+                "rowSpan": 1,
+                "syncTag": "bibliografia-complementaria",
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          }
+        ],
+        "title": "Sección 1"
+      },
+      {
+        "id": "tab-1-1770227550436",
+        "rows": [
+          {
+            "id": "row-1-0-1770227550436",
+            "cells": [
+              {
+                "id": "cell-1-0-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "DECANO/A DE FACULTAD",
+                "rowSpan": 1,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-1-0-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "DIRECTOR/A ACADÉMICO/A",
+                "rowSpan": 1,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-1-0-2-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "COORDINADOR/A DE CARRERA",
+                "rowSpan": 1,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-1-0-3-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "DOCENTE",
+                "rowSpan": 1,
+                "isHeader": true,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-1-1-1770227550436",
+            "cells": [
+              {
+                "id": "cell-1-1-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "Ing. Alfonso Moreno, Mg",
+                "rowSpan": 1,
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-1-1-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "Lic. Alexandra Monserrate Pionce Parrales, Mg. Duie.",
+                "rowSpan": 1,
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-1-1-2-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "Ing. Mario Javier Marcillo Merino, Mg",
+                "rowSpan": 1,
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-1-1-3-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "Lic. Fulco Pincay Ponce, MSIG",
+                "rowSpan": 1,
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          },
+          {
+            "id": "row-1-2-1770227550436",
+            "cells": [
+              {
+                "id": "cell-1-2-0-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "Fecha: 12-05-2025",
+                "rowSpan": 1,
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-1-2-1-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "Fecha: 12-05-2025",
+                "rowSpan": 1,
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-1-2-2-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "Fecha: 12-05-2025",
+                "rowSpan": 1,
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              },
+              {
+                "id": "cell-1-2-3-1770227550436",
+                "styles": {
+                  "textOrientation": "horizontal"
+                },
+                "colSpan": 1,
+                "content": "Fecha: 12-05-2025",
+                "rowSpan": 1,
+                "isHeader": false,
+                "isEditable": true,
+                "textOrientation": "horizontal"
+              }
+            ]
+          }
+        ],
+        "title": "VISADO"
+      }
+    ],
+    "version": "2.0",
+    "metadata": {
+      "level": "",
+      "period": "",
+      "subject": "",
+      "createdAt": "2026-02-04T17:52:30.436Z",
+      "updatedAt": "2026-02-11T02:34:48.375Z"
+    }
+  },
+  "usuario_id": 1,
+  "createdAt": "2026-02-04T17:52:33.885Z",
+  "updatedAt": "2026-03-04T03:08:40.497Z",
+  "plantilla_id": null,
+  "periodo": "Primer Periodo PII 2026",
+  "asignatura_id": "31"
+}

@@ -401,7 +401,7 @@ exports.delete = async (req, res) => {
     }
 
     // ¡VERIFICACIÓN DE PERMISOS!
-    if (syllabus.usuario_id !== userId && userRol !== 'administrador') {
+    if (syllabus.usuario_id !== userId && userRol !== 'administrador' && userRol !== 'comision_academica' && userRol !== 'comision') {
         return res.status(403).json({ success: false, message: 'No tienes permiso para eliminar este syllabus.' });
     }
     
@@ -1614,7 +1614,13 @@ exports.extractWordTables = async (req, res) => {
           }
           
           const $td = $(td);
-          const text = ($td.text() || '').replace(/\s+/g, ' ').trim();
+          const pElements = $td.find('p');
+          let text;
+          if (pElements.length > 0) {
+            text = pElements.map((i, p) => $(p).text().trim()).get().filter(t => t).join('\n');
+          } else {
+            text = ($td.text() || '').replace(/\s+/g, ' ').trim();
+          }
           const rowSpan = parseInt($td.attr('rowspan') || '1', 10) || 1;
           const colSpan = parseInt($td.attr('colspan') || '1', 10) || 1;
           

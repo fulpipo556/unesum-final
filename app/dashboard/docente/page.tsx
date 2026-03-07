@@ -23,34 +23,7 @@ export default function DocenteDashboard() {
       href: "/dashboard/docente/editor-programa-analitico",
       color: "bg-blue-500",
     },
-    {
-      title: "Horas Extracurriculares",
-      description: "Registrar y gestionar mis Horas Extracurriculares",
-      icon: BookOpen,
-      href: "/dashboard/docente/Horas_Extracurriculares",
-      color: "bg-teal-500",
-    },
-    {
-      title: "Formularios Dinámicos",
-      description: "Completar formularios basados en plantillas del administrador",
-      icon: FileSpreadsheet,
-      href: "/dashboard/docente/formularios",
-      color: "bg-indigo-500",
-    },
-    {
-      title: "Formularios Extraídos",
-      description: "Completar formularios generados desde archivos Excel/Word",
-      icon: ListChecks,
-      href: "/dashboard/docente/formularios-dinamicos",
-      color: "bg-violet-500",
-    },
-    {
-      title: "Syllabus Extraídos",
-      description: "Ver y completar formularios de Syllabus extraídos",
-      icon: FileCheck,
-      href: "/dashboard/docente/syllabus-formularios",
-      color: "bg-cyan-500",
-    },
+    
     {
       title: "Mi Perfil",
       description: "Actualizar información personal y académica",

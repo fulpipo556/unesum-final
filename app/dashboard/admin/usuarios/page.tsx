@@ -73,12 +73,12 @@ export default function GestionUsuariosPage() {
         const [uData, rData, fData, cData, nData, aData] = await Promise.all([
           uRes.json(), rRes.json(), fRes.json(), cRes.json(), nRes.json(), aRes.json()
         ]);
-        setUsuarios(uData.data || uData || []);
-        setRoles(rData.data || rData || []);
-        setFacultades(fData.data || fData || []);
-        setCarreras(cData.data || cData || []);
-        setNiveles(nData.data || nData || []);
-        setAsignaturas(aData.data || aData || []);
+        setUsuarios(Array.isArray(uData.data) ? uData.data : Array.isArray(uData) ? uData : []);
+        setRoles(Array.isArray(rData.data) ? rData.data : Array.isArray(rData) ? rData : []);
+        setFacultades(Array.isArray(fData.data) ? fData.data : Array.isArray(fData) ? fData : []);
+        setCarreras(Array.isArray(cData.data) ? cData.data : Array.isArray(cData) ? cData : []);
+        setNiveles(Array.isArray(nData.data) ? nData.data : Array.isArray(nData) ? nData : []);
+        setAsignaturas(Array.isArray(aData.data) ? aData.data : Array.isArray(aData) ? aData : []);
       } catch (error) {
         console.error('Error cargando datos:', error);
       } finally {
