@@ -41,6 +41,8 @@ export default function DocenteEditorProgramaAnaliticoPage() {
   const [error, setError] = useState<string | null>(null)
   const [programa_comision_id, setProgramaComisionId] = useState<number | null>(null)
   const [hasDocenteVersion, setHasDocenteVersion] = useState(false)
+  const [asignaturasDisponibles, setAsignaturasDisponibles] = useState<any[]>([])
+  const [selectedAsignaturaId, setSelectedAsignaturaId] = useState<string>('')
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'
 
@@ -75,23 +77,42 @@ export default function DocenteEditorProgramaAnaliticoPage() {
     const loadProfesor = async () => {
       try {
         const res = await apiRequest('/docente-editor/mi-info')
-        if (res.success) setProfesorInfo(res.data)
+        if (res.success) {
+          setProfesorInfo(res.data)
+          
+          const asigs: any[] = []
+          if (res.data.asignatura) {
+            asigs.push(res.data.asignatura)
+          }
+          if (res.data.asignaturas && Array.isArray(res.data.asignaturas)) {
+            for (const a of res.data.asignaturas) {
+              if (!asigs.find((x: any) => x.id === a.id)) {
+                asigs.push(a)
+              }
+            }
+          }
+          setAsignaturasDisponibles(asigs)
+          
+          const mainId = res.data.asignatura_id || res.data.asignatura?.id || (asigs.length > 0 ? asigs[0].id : null)
+          if (mainId) setSelectedAsignaturaId(String(mainId))
+        }
       } catch (e) { console.error('Error cargando info profesor:', e) }
     }
     loadProfesor()
   }, [])
 
-  // Cargar programa cuando cambia el periodo
+  // Cargar programa cuando cambia el periodo o la asignatura
   useEffect(() => {
     if (!selectedPeriod || !profesorInfo) return
+    if (!selectedAsignaturaId && asignaturasDisponibles.length === 0) return
     loadPrograma()
-  }, [selectedPeriod, profesorInfo])
+  }, [selectedPeriod, profesorInfo, selectedAsignaturaId])
 
   const loadPrograma = async () => {
     setLoading(true)
     setError(null)
 
-    const asignaturaId = profesorInfo?.asignatura_id || profesorInfo?.asignatura?.id
+    const asignaturaId = selectedAsignaturaId || profesorInfo?.asignatura_id || profesorInfo?.asignatura?.id
     if (!asignaturaId) {
       setError("No tienes una asignatura asignada. Contacta al administrador.")
       setLoading(false)
@@ -246,7 +267,7 @@ export default function DocenteEditorProgramaAnaliticoPage() {
     if (!programaData) return alert("No hay programa para guardar.")
     if (!selectedPeriod) return alert("Seleccione un periodo.")
 
-    const asignaturaId = profesorInfo?.asignatura_id || profesorInfo?.asignatura?.id
+    const asignaturaId = selectedAsignaturaId || profesorInfo?.asignatura_id || profesorInfo?.asignatura?.id
     setIsSaving(true)
     try {
       const datosParaGuardar = {
@@ -298,11 +319,25 @@ export default function DocenteEditorProgramaAnaliticoPage() {
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Editor de Programa Analítico</h1>
                 <p className="text-sm text-gray-500">
-                  {profesorInfo ? `${profesorInfo.nombres} ${profesorInfo.apellidos} — ${profesorInfo.asignatura?.nombre || 'Sin asignatura'}` : 'Cargando...'}
+                  {profesorInfo ? `${profesorInfo.nombres} ${profesorInfo.apellidos}` : 'Cargando...'}
+                  {selectedAsignaturaId && asignaturasDisponibles.length > 0 && (
+                    <> — {asignaturasDisponibles.find((a: any) => String(a.id) === selectedAsignaturaId)?.nombre || 'Sin asignatura'}</>
+                  )}
+                  {!selectedAsignaturaId && asignaturasDisponibles.length === 0 && profesorInfo && ' — Sin asignatura'}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              {asignaturasDisponibles.length > 1 && (
+                <Select value={selectedAsignaturaId} onValueChange={setSelectedAsignaturaId}>
+                  <SelectTrigger className="w-[250px]"><SelectValue placeholder="Asignatura" /></SelectTrigger>
+                  <SelectContent>
+                    {asignaturasDisponibles.map((a: any) => (
+                      <SelectItem key={a.id} value={String(a.id)}>{a.nombre} ({a.codigo})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
                 <SelectTrigger className="w-[250px]"><SelectValue placeholder="Periodo" /></SelectTrigger>
                 <SelectContent>

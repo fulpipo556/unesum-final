@@ -8,9 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Save, ArrowLeft, Loader2, Lock, Unlock } from "lucide-react"
+import { Save, ArrowLeft, Loader2, Lock, Unlock, FileDown } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import Link from "next/link"
+import jsPDF from "jspdf"
+import autoTable from "jspdf-autotable"
 
 // --- INTERFACES ---
 interface TableCell {
@@ -76,6 +78,8 @@ export default function DocenteEditorSyllabusPage() {
   const [error, setError] = useState<string | null>(null)
   const [syllabus_comision_id, setSyllabusComisionId] = useState<number | null>(null)
   const [hasDocenteVersion, setHasDocenteVersion] = useState(false)
+  const [asignaturasDisponibles, setAsignaturasDisponibles] = useState<any[]>([])
+  const [selectedAsignaturaId, setSelectedAsignaturaId] = useState<string>('')
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'
 
@@ -110,25 +114,47 @@ export default function DocenteEditorSyllabusPage() {
     const loadProfesor = async () => {
       try {
         const res = await apiRequest('/docente-editor/mi-info')
-        if (res.success) setProfesorInfo(res.data)
+        if (res.success) {
+          setProfesorInfo(res.data)
+          
+          // Construir lista de asignaturas disponibles (directa + M2M)
+          const asigs: any[] = []
+          if (res.data.asignatura) {
+            asigs.push(res.data.asignatura)
+          }
+          if (res.data.asignaturas && Array.isArray(res.data.asignaturas)) {
+            for (const a of res.data.asignaturas) {
+              if (!asigs.find((x: any) => x.id === a.id)) {
+                asigs.push(a)
+              }
+            }
+          }
+          setAsignaturasDisponibles(asigs)
+          
+          // Pre-seleccionar la primera asignatura
+          const mainId = res.data.asignatura_id || res.data.asignatura?.id || (asigs.length > 0 ? asigs[0].id : null)
+          if (mainId) setSelectedAsignaturaId(String(mainId))
+        }
       } catch (e) { console.error('Error cargando info profesor:', e) }
     }
     loadProfesor()
   }, [])
 
-  // Cargar syllabus cuando cambia el periodo
+  // Cargar syllabus cuando cambia el periodo o la asignatura seleccionada
   useEffect(() => {
     if (!selectedPeriod || !profesorInfo) return
     loadSyllabus()
-  }, [selectedPeriod, profesorInfo])
+  }, [selectedPeriod, profesorInfo, selectedAsignaturaId])
 
   const loadSyllabus = async () => {
     setLoading(true)
     setError(null)
+    setSyllabusData(null)
+    setActiveTabId(null)
 
-    const asignaturaId = profesorInfo?.asignatura_id || profesorInfo?.asignatura?.id
+    const asignaturaId = selectedAsignaturaId || profesorInfo?.asignatura_id || profesorInfo?.asignatura?.id
     if (!asignaturaId) {
-      setError("No tienes una asignatura asignada. Contacta al administrador.")
+      setError("No tienes una asignatura asignada. Contacta al administrador para que te asignen una asignatura.")
       setLoading(false)
       return
     }
@@ -146,19 +172,43 @@ export default function DocenteEditorSyllabusPage() {
           setLoading(false)
           return
         }
-      } catch (e) { /* No tiene versión propia, buscar la de comisión */ }
+      } catch (e) { 
+        console.log('No hay versión propia del docente, buscando la de comisión...') 
+      }
 
       // 2. Buscar syllabus de la comisión
-      const comisionRes = await apiRequest(`/docente-editor/syllabus/comision?asignatura_id=${asignaturaId}&periodo=${selectedPeriod}`)
-      if (comisionRes.success && comisionRes.data?.datos_syllabus) {
-        let datos = comisionRes.data.datos_syllabus
-        if (typeof datos === 'string') datos = JSON.parse(datos)
-        processSyllabusData(datos)
-        setSyllabusComisionId(comisionRes.data.id)
-        setHasDocenteVersion(false)
-      } else {
-        setError("No se encontró syllabus para tu asignatura en este periodo.")
+      try {
+        const comisionRes = await apiRequest(`/docente-editor/syllabus/comision?asignatura_id=${asignaturaId}&periodo=${selectedPeriod}`)
+        if (comisionRes.success && comisionRes.data?.datos_syllabus) {
+          let datos = comisionRes.data.datos_syllabus
+          if (typeof datos === 'string') datos = JSON.parse(datos)
+          processSyllabusData(datos)
+          setSyllabusComisionId(comisionRes.data.id)
+          setHasDocenteVersion(false)
+          setLoading(false)
+          return
+        }
+      } catch (e: any) {
+        console.log('No se encontró syllabus de comisión:', e.message)
       }
+
+      // 3. Buscar en la tabla general de syllabi sin filtrar periodo
+      try {
+        const generalRes = await apiRequest(`/docente-editor/syllabus/comision?asignatura_id=${asignaturaId}&periodo=`)
+        if (generalRes.success && generalRes.data?.datos_syllabus) {
+          let datos = generalRes.data.datos_syllabus
+          if (typeof datos === 'string') datos = JSON.parse(datos)
+          processSyllabusData(datos)
+          setSyllabusComisionId(generalRes.data.id)
+          setHasDocenteVersion(false)
+          setLoading(false)
+          return
+        }
+      } catch (e: any) {
+        console.log('No se encontró syllabus general:', e.message)
+      }
+
+      setError("No se encontró syllabus para tu asignatura. La comisión académica debe subir el syllabus primero desde el Editor de Syllabus.")
     } catch (e: any) {
       setError(e.message || "Error al cargar syllabus")
     } finally {
@@ -185,8 +235,77 @@ export default function DocenteEditorSyllabusPage() {
           }))
         }))
       }
+    } else if (datos.rows) {
+      // Formato antiguo: solo rows sin tabs, envolver en un tab
+      parsed = {
+        ...datos,
+        tabs: [{
+          id: 'tab-general',
+          title: 'General',
+          rows: (datos.rows || []).map((r: any) => ({
+            ...r,
+            cells: (r.cells || []).map((c: any) => ({
+              ...c,
+              backgroundColor: c.backgroundColor || c.styles?.backgroundColor,
+              textOrientation: c.textOrientation || c.styles?.textOrientation || 'horizontal',
+              isEditable: true
+            }))
+          }))
+        }]
+      }
+    } else if (datos.campos_por_seccion || datos.hojas) {
+      // Formato viejo de extracción (campos_por_seccion): convertir a tabs con filas
+      const tabs: TabData[] = []
+      const contenido = datos.contenido || {}
+      const camposPorSeccion = datos.campos_por_seccion || {}
+      
+      Object.entries(camposPorSeccion).forEach(([seccion, campos]: [string, any], tabIdx: number) => {
+        const rows: TableRow[] = []
+        if (Array.isArray(campos)) {
+          campos.forEach((campo: string, rowIdx: number) => {
+            rows.push({
+              id: `row-${tabIdx}-${rowIdx}`,
+              cells: [
+                {
+                  id: `cell-${tabIdx}-${rowIdx}-0`,
+                  content: campo,
+                  isHeader: true,
+                  rowSpan: 1,
+                  colSpan: 1,
+                  isEditable: false,
+                  fontWeight: 'bold',
+                  textAlign: 'left'
+                },
+                {
+                  id: `cell-${tabIdx}-${rowIdx}-1`,
+                  content: contenido[campo] || '',
+                  isHeader: false,
+                  rowSpan: 1,
+                  colSpan: 1,
+                  isEditable: true,
+                  textAlign: 'left'
+                }
+              ]
+            })
+          })
+        }
+        tabs.push({
+          id: `tab-${tabIdx}`,
+          title: seccion,
+          rows
+        })
+      })
+
+      if (tabs.length === 0) {
+        // Si no hay campos_por_seccion tampoco, crear tab vacío de hojas
+        (datos.hojas || ['General']).forEach((hoja: string, idx: number) => {
+          tabs.push({ id: `tab-${idx}`, title: hoja, rows: [] })
+        })
+      }
+
+      parsed = { ...datos, tabs }
     } else {
-      setError("Formato de syllabus no reconocido")
+      setError("No se encontró contenido en el syllabus. Contacta a la comisión académica para que suba el syllabus.")
       return
     }
 
@@ -311,7 +430,7 @@ export default function DocenteEditorSyllabusPage() {
     if (!syllabusData) return alert("No hay syllabus para guardar.")
     if (!selectedPeriod) return alert("Seleccione un periodo.")
 
-    const asignaturaId = profesorInfo?.asignatura_id || profesorInfo?.asignatura?.id
+    const asignaturaId = selectedAsignaturaId || profesorInfo?.asignatura_id || profesorInfo?.asignatura?.id
     setIsSaving(true)
     try {
       const datosParaGuardar = {
@@ -348,6 +467,366 @@ export default function DocenteEditorSyllabusPage() {
     }
   }
 
+  // Generar PDF con el mismo formato que la comisión académica
+  const handlePrintToPdf = async () => {
+    if (!syllabusData) return;
+
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const marginL = 10;
+    const marginR = 10;
+    const contentWidth = pageWidth - marginL - marginR;
+
+    // --- LOGO ---
+    try {
+      const logoImg = new Image();
+      logoImg.crossOrigin = 'anonymous';
+      await new Promise<void>((resolve, reject) => {
+        logoImg.onload = () => resolve();
+        logoImg.onerror = () => reject();
+        logoImg.src = '/images/unesum-logo-official.png';
+      });
+      doc.addImage(logoImg, 'PNG', marginL, 3, 12, 12);
+    } catch { /* logo no disponible */ }
+
+    // --- ENCABEZADO ---
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('UNIVERSIDAD ESTATAL DEL SUR DE MANABÍ', pageWidth / 2, 6, { align: 'center' });
+    doc.setFontSize(8);
+    doc.text('SYLLABUS DE ASIGNATURA', pageWidth / 2, 11, { align: 'center' });
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.text(syllabusData.name || '', pageWidth / 2, 15, { align: 'center' });
+
+    let currentY = 19;
+
+    const isFirstSectionTab = (title: string) => {
+      const t = title.toUpperCase();
+      return t.includes('GENERAL') || t.includes('INFORMACIÓN') || t.includes('DATOS') || t.includes('INFORMACION');
+    };
+
+    for (const tab of syllabusData.tabs) {
+      if (!tab.rows || tab.rows.length === 0) continue;
+
+      const isEstructuraSectionPreCheck = tab.title.toUpperCase().includes('ESTRUCTURA') || tab.title.toUpperCase().includes('ASIGNATURA');
+      const minSpace = isEstructuraSectionPreCheck ? 80 : 25;
+      if (currentY + minSpace > pageHeight - 10) { doc.addPage(); currentY = 10; }
+
+      const titleStartY = currentY;
+
+      currentY += 1.5;
+      doc.setFontSize(8.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(25, 50, 95);
+      doc.text(tab.title.toUpperCase(), marginL, currentY);
+      currentY += 1;
+      doc.setDrawColor(25, 50, 95);
+      doc.setLineWidth(0.4);
+      doc.line(marginL, currentY, marginL + contentWidth, currentY);
+      currentY += 2;
+
+      const sectionTitle = tab.title.toUpperCase();
+      const titlePageNum = doc.getNumberOfPages();
+
+      const isFirstSection = isFirstSectionTab(tab.title);
+      const isVisadoSection = tab.title.toUpperCase().includes('VISADO') || tab.title.toUpperCase().includes('LEGALIZACIÓN') || tab.title.toUpperCase().includes('LEGALIZACION');
+      const isEstructuraSection = tab.title.toUpperCase().includes('ESTRUCTURA') || tab.title.toUpperCase().includes('ASIGNATURA');
+
+      if (isFirstSection) {
+        const cleanRows: any[][] = [];
+        for (const row of tab.rows) {
+          const visible = row.cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
+          if (visible.length === 0) continue;
+          if (visible.length === 1) {
+            const txt = (visible[0].content || '').trim();
+            if (!txt) continue;
+            cleanRows.push([{ content: txt, colSpan: 3, styles: { fontStyle: 'bold' as const, fillColor: '#E5E7EB', halign: 'left' as const, fontSize: 8 } }]);
+          } else {
+            let label = '', sep = '', values: string[] = [];
+            for (let ci = 0; ci < visible.length; ci++) {
+              const txt = (visible[ci].content || '').trim();
+              const isSep = txt === ':' || (txt.length <= 2 && txt.length > 0 && !/[a-zA-Z0-9]/.test(txt));
+              if (ci === 0) { label = txt; }
+              else if (isSep && !sep) { sep = txt; }
+              else { values.push(txt); }
+            }
+            const valueTxt = values.join(' ').trim();
+            cleanRows.push([
+              { content: label, styles: { fontStyle: 'bold' as const, fillColor: '#F9FAFB', halign: 'left' as const } },
+              { content: sep || ':', styles: { halign: 'center' as const, fillColor: '#FFFFFF' } },
+              { content: valueTxt, styles: { fontStyle: 'normal' as const, fillColor: '#FFFFFF', halign: 'left' as const } },
+            ]);
+          }
+        }
+        if (cleanRows.length > 0) {
+          const labelW = contentWidth * 0.30;
+          const sepW = contentWidth * 0.02;
+          const valW = contentWidth * 0.68;
+          autoTable(doc, {
+            body: cleanRows as any,
+            startY: currentY,
+            theme: 'grid',
+            columnStyles: { 0: { cellWidth: labelW }, 1: { cellWidth: sepW }, 2: { cellWidth: valW } },
+            styles: { fontSize: 8, cellPadding: { top: 0.5, right: 1, bottom: 0.5, left: 1 }, lineColor: '#9CA3AF', lineWidth: 0.15, overflow: 'linebreak', halign: 'left', valign: 'top', textColor: '#1F2937' },
+            margin: { left: marginL, right: marginR },
+            tableWidth: contentWidth,
+          });
+          currentY = (doc as any).lastAutoTable?.finalY || (doc as any).previousAutoTable?.finalY || currentY + 10;
+          const pagesAfter1 = doc.getNumberOfPages();
+          if (pagesAfter1 > titlePageNum) {
+            doc.setPage(titlePageNum);
+            doc.setFillColor(255, 255, 255);
+            doc.rect(marginL - 1, titleStartY - 1, contentWidth + 2, 8, 'F');
+            doc.setPage(pagesAfter1);
+          }
+          currentY += 2;
+        }
+      } else {
+        // SECCIONES NORMALES
+        let headerRowIdx = -1;
+        for (let ri = 0; ri < tab.rows.length; ri++) {
+          const vis = tab.rows[ri].cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
+          if (vis.length < 3) continue;
+          const allAreHeader = vis.every(c => c.isHeader);
+          const avgLen = vis.reduce((sum, c) => sum + (c.content || '').trim().length, 0) / vis.length;
+          if (allAreHeader && avgLen <= 40) { headerRowIdx = ri; break; }
+        }
+        if (headerRowIdx === -1) {
+          for (let ri = 0; ri < tab.rows.length; ri++) {
+            const vis = tab.rows[ri].cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
+            if (vis.length >= 3) { headerRowIdx = ri; break; }
+          }
+        }
+
+        const colCounts: number[] = [];
+        for (let ri = 0; ri < tab.rows.length; ri++) {
+          if (ri === headerRowIdx) continue;
+          const vis = tab.rows[ri].cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
+          if (vis.length === 0) continue;
+          const logCols = vis.reduce((sum, c) => sum + (c.colSpan || 1), 0);
+          colCounts.push(logCols);
+        }
+        let maxLogCols = 0;
+        if (colCounts.length > 0) {
+          const freq: Record<number, number> = {};
+          for (const n of colCounts) freq[n] = (freq[n] || 0) + 1;
+          let bestCount = 0;
+          for (const [cols, count] of Object.entries(freq)) {
+            if (count > bestCount) { bestCount = count; maxLogCols = Number(cols); }
+          }
+        }
+        if (maxLogCols === 0 && headerRowIdx >= 0) {
+          const hdrVis = tab.rows[headerRowIdx].cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
+          maxLogCols = hdrVis.reduce((sum, c) => sum + (c.colSpan || 1), 0);
+        }
+
+        type ColType = 'unidad' | 'contenido' | 'horas' | 'pfae' | 'metodologia' | 'recursos' | 'escenario' | 'biblio' | 'fecha' | 'separator' | 'resultado' | 'criterio' | 'instrumento' | 'other';
+        const colTypeMap: Record<number, ColType> = {};
+        if (headerRowIdx >= 0) {
+          const hdrCells = tab.rows[headerRowIdx].cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
+          let colIdx = 0;
+          for (const hc of hdrCells) {
+            const txt = (hc.content || '').trim().toUpperCase();
+            const isSepH = txt === ':' || (txt.length <= 2 && txt.length > 0 && !/[A-Z0-9]/.test(txt));
+            const span = hc.colSpan || 1;
+            let type: ColType = 'other';
+            if (isSepH) type = 'separator';
+            else if (txt.includes('UNIDAD') || txt.includes('TEMÁT') || txt.includes('TEMAT')) type = 'unidad';
+            else if (txt.includes('CONTENIDO')) type = 'contenido';
+            else if (txt.includes('PRESENCIAL') || txt.includes('SINCRÓNIC') || txt.includes('SINCRONIC')) type = 'horas';
+            else if (txt === 'PFAE' || txt === 'TA') type = 'pfae';
+            else if (txt.includes('METODOLOG') || txt.includes('ENSEÑANZA')) type = 'metodologia';
+            else if (txt.includes('RECURSO') || txt.includes('DIDÁCTICO') || txt.includes('DIDACTICO')) type = 'recursos';
+            else if (txt.includes('ESCENARIO')) type = 'escenario';
+            else if (txt.includes('BIBLIOGRAF') || txt.includes('FUENTE') || txt.includes('CONSULTA')) type = 'biblio';
+            else if (txt.includes('FECHA') || txt.includes('PARALELO')) type = 'fecha';
+            else if (txt.includes('RESULTADO') || txt.includes('APRENDIZAJE')) type = 'resultado';
+            else if (txt.includes('CRITERIO')) type = 'criterio';
+            else if (txt.includes('INSTRUMENTO')) type = 'instrumento';
+            for (let s = 0; s < span && (colIdx + s) < maxLogCols; s++) { colTypeMap[colIdx + s] = type; }
+            colIdx += span;
+          }
+        }
+
+        const widthByType: Record<ColType, number> = {
+          unidad: 24, contenido: 50, horas: 13, pfae: 9, metodologia: 24, recursos: 55,
+          escenario: 20, biblio: 38, fecha: 26, separator: 3, resultado: 42, criterio: 36, instrumento: 32, other: 28,
+        };
+        const colWidthMap: Record<number, number> = {};
+        let totalAssigned = 0;
+        for (let i = 0; i < maxLogCols; i++) { totalAssigned += widthByType[colTypeMap[i] || 'other']; }
+        if (totalAssigned > 0) {
+          const scaleF = contentWidth / totalAssigned;
+          for (let i = 0; i < maxLogCols; i++) { colWidthMap[i] = Math.round(widthByType[colTypeMap[i] || 'other'] * scaleF * 10) / 10; }
+        }
+
+        const body: any[][] = [];
+        let headerOriginalSpan = 1;
+        if (headerRowIdx >= 0) {
+          const hdrCells = tab.rows[headerRowIdx].cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
+          headerOriginalSpan = Math.max(1, ...hdrCells.map(c => c.rowSpan || 1));
+        }
+
+        for (let ri = 0; ri < tab.rows.length; ri++) {
+          const row = tab.rows[ri];
+          const pdfRow: any[] = [];
+          const visibleCells = row.cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
+          if (visibleCells.length === 0) continue;
+          if (headerRowIdx >= 0 && ri > headerRowIdx && ri < headerRowIdx + headerOriginalSpan) continue;
+          const isRealHeader = (ri === headerRowIdx);
+          let currentLogCol = 0;
+          for (const cell of visibleCells) {
+            let content = (cell.content || '').replace(/\r\n/g, '\n');
+            const contentUp = content.trim().toUpperCase();
+            const isVert = cell.textOrientation === 'vertical';
+            if (!isVert && !isRealHeader && content.includes('B.') && !content.includes('\n')) {
+              content = content.replace(/\s+(B\.)/g, '\n$1');
+            }
+            let displayContentPdf = content;
+            if (isVert && isRealHeader) {
+              if (contentUp.includes('METODOLOG')) displayContentPdf = 'Metodología';
+              else if (contentUp.includes('ESCENARIO')) displayContentPdf = 'Escenario';
+              else if (contentUp.includes('PRESENCIAL')) displayContentPdf = 'HD.\nPresencial';
+              else if (contentUp.includes('SINCRÓNIC') || contentUp.includes('SINCRONIC')) displayContentPdf = 'HD.\nSincrónica';
+            }
+            let cellSpan = cell.colSpan || 1;
+            if (currentLogCol + cellSpan > maxLogCols) { cellSpan = Math.max(1, maxLogCols - currentLogCol); }
+            const safeRowSpan = isRealHeader ? 1 : (cell.rowSpan || 1);
+            const isVisadoDataRow = isVisadoSection && !isRealHeader;
+            const isVisadoFechaRow = isVisadoDataRow && content.trim().toLowerCase().startsWith('fecha');
+            pdfRow.push({
+              content: displayContentPdf, rowSpan: safeRowSpan, colSpan: cellSpan,
+              styles: {
+                fontStyle: isRealHeader ? 'bold' as const : 'normal' as const,
+                fillColor: isRealHeader ? '#E8EDF2' : (cell.backgroundColor || '#FFFFFF'),
+                textColor: isRealHeader ? '#1E3A5F' : '#1F2937',
+                fontSize: isVisadoSection ? 10 : isRealHeader ? 7.5 : 8,
+                cellPadding: isVisadoFechaRow ? { top: 2, right: 3, bottom: 2, left: 3 } : isVisadoDataRow ? { top: 20, right: 3, bottom: 3, left: 3 } : isRealHeader ? { top: 1.5, right: 1, bottom: 1.5, left: 1 } : { top: 0.8, right: 0.8, bottom: 0.8, left: 0.8 },
+                halign: isVisadoSection ? 'center' as const : isEstructuraSection ? 'center' as const : isRealHeader ? 'center' as const : 'left' as const,
+                valign: isVisadoDataRow ? 'bottom' as const : 'middle' as const,
+                minCellHeight: isVisadoFechaRow ? 8 : isVisadoDataRow ? 30 : isRealHeader ? 6 : 3,
+                overflow: 'linebreak' as const,
+              }
+            });
+            currentLogCol += cellSpan;
+          }
+          if (pdfRow.length > 0) body.push(pdfRow);
+        }
+
+        if (body.length > 0) {
+          const colStyles: Record<number, { cellWidth: number }> = {};
+          for (let i = 0; i < maxLogCols; i++) { if (colWidthMap[i]) colStyles[i] = { cellWidth: colWidthMap[i] }; }
+
+          // Rastrear celdas combinadas (rowSpan>1) para limpiar bordes internos
+          const mergedCellsOnPage: Array<{x: number, y: number, w: number, h: number, bg: any, rawContent: string, text: string[], styles: any, page: number}> = [];
+
+          autoTable(doc, {
+            body: body as any, startY: currentY, theme: 'grid',
+            styles: {
+              fontSize: isVisadoSection ? 10 : 8,
+              cellPadding: isVisadoSection ? { top: 6, right: 3, bottom: 6, left: 3 } : isEstructuraSection ? { top: 1.2, right: 1, bottom: 1.2, left: 1 } : { top: 0.8, right: 0.8, bottom: 0.8, left: 0.8 },
+              lineColor: '#9CA3AF', lineWidth: 0.15, overflow: 'linebreak',
+              halign: isEstructuraSection ? 'center' : 'left', valign: 'middle',
+              minCellHeight: isVisadoSection ? 20 : 3,
+            },
+            columnStyles: colStyles,
+            margin: { left: marginL, right: marginR, top: 15 },
+            tableWidth: contentWidth,
+            didDrawCell: (data: any) => {
+              if (isEstructuraSection && data.cell.rowSpan > 1) {
+                const rawContent = typeof data.cell.raw === 'object' ? (data.cell.raw?.content || '') : (data.cell.raw || '');
+                mergedCellsOnPage.push({
+                  x: data.cell.x,
+                  y: data.cell.y,
+                  w: data.cell.width,
+                  h: data.cell.height,
+                  bg: data.cell.styles.fillColor,
+                  rawContent: String(rawContent),
+                  text: data.cell.text || [],
+                  styles: { ...data.cell.styles },
+                  page: doc.getNumberOfPages()
+                });
+              }
+            },
+            didDrawPage: (data: any) => {
+              if (isEstructuraSection && mergedCellsOnPage.length > 0) {
+                const currentPage = doc.getNumberOfPages();
+                for (const mc of mergedCellsOnPage) {
+                  if (mc.page !== currentPage) continue;
+                  const bg = mc.bg;
+                  if (bg) {
+                    if (typeof bg === 'string') doc.setFillColor(bg);
+                    else if (Array.isArray(bg)) doc.setFillColor(bg[0] || 255, bg[1] || 255, bg[2] || 255);
+                    else doc.setFillColor(255, 255, 255);
+                  } else {
+                    doc.setFillColor(255, 255, 255);
+                  }
+                  const lw = 0.15;
+                  doc.rect(mc.x + lw, mc.y + lw, mc.w - 2 * lw, mc.h - 2 * lw, 'F');
+
+                  const textLines = mc.text && mc.text.length > 0 ? mc.text : (mc.rawContent ? mc.rawContent.split('\n') : []);
+                  if (textLines.length > 0 && textLines.some((t: string) => t.trim().length > 0)) {
+                    const tc = mc.styles.textColor;
+                    if (tc) {
+                      if (typeof tc === 'string') doc.setTextColor(tc);
+                      else if (Array.isArray(tc)) doc.setTextColor(tc[0], tc[1], tc[2]);
+                      else doc.setTextColor(31, 41, 55);
+                    }
+                    const fs = mc.styles.fontSize || 8;
+                    doc.setFontSize(fs);
+                    doc.setFont('helvetica', mc.styles.fontStyle || 'normal');
+                    const pad = 1.2;
+                    const cellInnerW = mc.w - 2 * pad;
+                    const halign = mc.styles.halign || 'center';
+                    let textX: number;
+                    if (halign === 'center') textX = mc.x + mc.w / 2;
+                    else if (halign === 'right') textX = mc.x + mc.w - pad;
+                    else textX = mc.x + pad;
+                    const lineH = fs * 0.4;
+                    const totalTextH = textLines.length * lineH;
+                    const textY = mc.y + (mc.h - totalTextH) / 2 + lineH * 0.7;
+                    for (let li = 0; li < textLines.length; li++) {
+                      const line = textLines[li];
+                      if (line.trim().length === 0) continue;
+                      doc.text(line, textX, textY + li * lineH, { align: halign, maxWidth: cellInnerW });
+                    }
+                  }
+
+                  doc.setDrawColor('#9CA3AF');
+                  doc.setLineWidth(lw);
+                  doc.rect(mc.x, mc.y, mc.w, mc.h, 'S');
+                }
+                mergedCellsOnPage.length = 0;
+              }
+              if (data.pageNumber > 1 || data.pageCount > 1) {
+                doc.setFontSize(8.5);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(25, 50, 95);
+                doc.text(sectionTitle + ' (cont.)', marginL, 10);
+                doc.setDrawColor(25, 50, 95);
+                doc.setLineWidth(0.4);
+                doc.line(marginL, 11, marginL + contentWidth, 11);
+              }
+            },
+          });
+          currentY = (doc as any).lastAutoTable?.finalY || (doc as any).previousAutoTable?.finalY || currentY + 10;
+          const pagesAfter2 = doc.getNumberOfPages();
+          if (pagesAfter2 > titlePageNum) {
+            doc.setPage(titlePageNum);
+            doc.setFillColor(255, 255, 255);
+            doc.rect(marginL - 1, titleStartY - 1, contentWidth + 2, 8, 'F');
+            doc.setPage(pagesAfter2);
+          }
+          currentY += 2;
+        }
+      }
+    }
+
+    doc.save(`Syllabus_${syllabusData.name || 'Docente'}.pdf`);
+  }
+
   // Auto-fill content for profesor info
   const getAutoFilledContent = (cell: TableCell, rowIndex: number, cellIndex: number): string => {
     if (rowIndex <= 5 && cellIndex > 0 && profesorInfo) {
@@ -381,11 +860,25 @@ export default function DocenteEditorSyllabusPage() {
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Editor de Syllabus</h1>
                 <p className="text-sm text-gray-500">
-                  {profesorInfo ? `${profesorInfo.nombres} ${profesorInfo.apellidos} — ${profesorInfo.asignatura?.nombre || 'Sin asignatura'}` : 'Cargando...'}
+                  {profesorInfo ? `${profesorInfo.nombres} ${profesorInfo.apellidos}` : 'Cargando...'}
+                  {selectedAsignaturaId && asignaturasDisponibles.length > 0 && (
+                    <> — {asignaturasDisponibles.find((a: any) => String(a.id) === selectedAsignaturaId)?.nombre || 'Sin asignatura'}</>
+                  )}
+                  {!selectedAsignaturaId && asignaturasDisponibles.length === 0 && profesorInfo && ' — Sin asignatura'}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              {asignaturasDisponibles.length > 1 && (
+                <Select value={selectedAsignaturaId} onValueChange={setSelectedAsignaturaId}>
+                  <SelectTrigger className="w-[250px]"><SelectValue placeholder="Asignatura" /></SelectTrigger>
+                  <SelectContent>
+                    {asignaturasDisponibles.map((a: any) => (
+                      <SelectItem key={a.id} value={String(a.id)}>{a.nombre} ({a.codigo})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
                 <SelectTrigger className="w-[250px]"><SelectValue placeholder="Periodo" /></SelectTrigger>
                 <SelectContent>
@@ -396,6 +889,9 @@ export default function DocenteEditorSyllabusPage() {
               </Select>
               <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700" disabled={isSaving || !syllabusData}>
                 {isSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Guardando...</> : <><Save className="h-4 w-4 mr-2" /> Guardar</>}
+              </Button>
+              <Button onClick={handlePrintToPdf} variant="outline" size="sm" disabled={!syllabusData}>
+                <FileDown className="h-4 w-4 mr-2" /> Exportar PDF
               </Button>
             </div>
           </div>
@@ -454,35 +950,132 @@ export default function DocenteEditorSyllabusPage() {
               {activeTab && (
                 <Card className="border-emerald-100 shadow-md">
                   <CardContent className="p-4">
-                    <div className="overflow-x-auto border border-gray-200 rounded-lg shadow-sm bg-white max-h-[75vh] overflow-y-auto">
-                      <table className="border-collapse text-xs text-left w-full">
+                    <div className="overflow-x-auto border border-gray-200 rounded-lg shadow-sm bg-white max-h-[75vh] overflow-y-auto custom-scrollbar">
+                      <table className="border-collapse text-xs text-left" style={{ tableLayout: (activeTab && (activeTab.title.toUpperCase().includes('GENERAL') || activeTab.title.toUpperCase().includes('INFORMACIÓN') || activeTab.title.toUpperCase().includes('DATOS'))) ? 'fixed' : 'auto', width: '100%', maxWidth: '100%' }}>
                         <tbody className="divide-y divide-gray-200">
                           {tableData.length === 0 ? (
                             <tr><td className="p-12 text-center text-gray-500">La tabla está vacía.</td></tr>
                           ) : (
-                            tableData.map((row, rowIndex) => (
-                              <tr key={row.id} className="hover:bg-slate-50/50">
+                            tableData.map((row, rowIndex) => {
+                              const isFirstSectionRow = activeTab && (activeTab.title.toUpperCase().includes('GENERAL') || activeTab.title.toUpperCase().includes('INFORMACIÓN') || activeTab.title.toUpperCase().includes('DATOS'));
+                              const rowVisibleCols = row.cells.filter(c => c.rowSpan > 0 && c.colSpan > 0).length;
+                              const isFormRow = isFirstSectionRow && rowVisibleCols <= 4;
+                              return (
+                              <tr key={row.id} className={`transition-colors ${isFormRow ? 'hover:bg-slate-50/80' : 'hover:bg-blue-50/50'}`}>
                                 {row.cells.map((cell, cellIndex) => {
                                   if (cell.rowSpan === 0 || cell.colSpan === 0) return null;
 
                                   const editable = isDocenteEditable(cell, rowIndex, cellIndex, tableData)
                                   const displayContent = getAutoFilledContent(cell, rowIndex, cellIndex)
-                                  const isVertical = cell.textOrientation === 'vertical'
+                                  const contentTrimmed = (cell.content || '').trim();
+
+                                  // Primera sección: nunca vertical; con guión o >14 chars: nunca vertical
+                                  const isFirstSection = activeTab.title.toUpperCase().includes('GENERAL') || activeTab.title.toUpperCase().includes('INFORMACIÓN') || activeTab.title.toUpperCase().includes('DATOS');
+                                  const isVertical = (() => {
+                                    if (cell.textOrientation !== 'vertical') return false;
+                                    if (isFirstSection) return false;
+                                    if (contentTrimmed.includes('-') || contentTrimmed.length > 14) return false;
+                                    return true;
+                                  })();
+
+                                  const isSeparator = contentTrimmed === ':' || (contentTrimmed.length <= 2 && !/[a-zA-Z0-9]/.test(contentTrimmed) && contentTrimmed.length > 0);
+                                  const totalVisibleCols = row.cells.filter(c => c.rowSpan > 0 && c.colSpan > 0).length;
+                                  const isSimpleRow = totalVisibleCols <= 4;
+
+                                  // Column type detection from headers
+                                  const getHeaderColType = () => {
+                                    if (!activeTab || !activeTab.rows) return 'other';
+                                    for (const hRow of activeTab.rows) {
+                                      const vis = hRow.cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
+                                      if (vis.length < 3 || !vis.every(c => c.isHeader)) continue;
+                                      let col = 0;
+                                      for (const hc of vis) {
+                                        const span = hc.colSpan || 1;
+                                        if (cellIndex >= col && cellIndex < col + span) {
+                                          const t = (hc.content || '').trim().toUpperCase();
+                                          if (t.includes('UNIDAD') || t.includes('TEMÁT') || t.includes('TEMAT')) return 'unidad';
+                                          if (t.includes('CONTENIDO')) return 'contenido';
+                                          if (t.includes('RESULTADO') || t.includes('APRENDIZAJE')) return 'resultado';
+                                          if (t.includes('CRITERIO')) return 'criterio';
+                                          if (t.includes('INSTRUMENTO')) return 'instrumento';
+                                          if (t.includes('METODOLOG') || t.includes('ENSEÑANZA')) return 'metodologia';
+                                          if (t.includes('RECURSO') || t.includes('DIDÁCTICO')) return 'recursos';
+                                          if (t.includes('ESCENARIO')) return 'escenario';
+                                          if (t.includes('BIBLIOGRAF') || t.includes('FUENTE')) return 'biblio';
+                                          if (t.includes('FECHA') || t.includes('PARALELO')) return 'fecha';
+                                          if (t.includes('PRESENCIAL') || t.includes('SINCRÓNIC') || t.includes('SINCRONIC')) return 'horas';
+                                          if (t === 'PFAE' || t === 'TA') return 'pfae';
+                                          return 'other';
+                                        }
+                                        col += span;
+                                      }
+                                      break;
+                                    }
+                                    return 'other';
+                                  };
+                                  const colType = getHeaderColType();
+
+                                  const colWidthConfig: Record<string, { w: string, min: string, max: string }> = {
+                                    unidad: { w: 'auto', min: '100px', max: '160px' },
+                                    contenido: { w: 'auto', min: '130px', max: '220px' },
+                                    resultado: { w: 'auto', min: '130px', max: '250px' },
+                                    criterio: { w: 'auto', min: '100px', max: '180px' },
+                                    instrumento: { w: 'auto', min: '100px', max: '170px' },
+                                    metodologia: { w: 'auto', min: '100px', max: '180px' },
+                                    recursos: { w: 'auto', min: '120px', max: '200px' },
+                                    escenario: { w: 'auto', min: '80px', max: '130px' },
+                                    biblio: { w: 'auto', min: '100px', max: '170px' },
+                                    fecha: { w: 'auto', min: '80px', max: '140px' },
+                                    horas: { w: 'auto', min: '35px', max: '55px' },
+                                    pfae: { w: 'auto', min: '30px', max: '45px' },
+                                    other: { w: 'auto', min: '60px', max: 'none' },
+                                  };
+
+                                  const dims = (() => {
+                                    if (isFirstSection && isSimpleRow) {
+                                      if (isSeparator) return { w: '18px', min: '18px', max: '18px' };
+                                      if (cellIndex === 0) return { w: '250px', min: '200px', max: '300px' };
+                                      return { w: 'auto', min: '60px', max: 'none' };
+                                    }
+                                    if (isVertical) return { w: '28px', min: '28px', max: '28px' };
+                                    if (isSeparator) return { w: '20px', min: '20px', max: '20px' };
+                                    if (contentTrimmed.length <= 4 && cellIndex > 1 && !cell.isHeader) return { w: '35px', min: '35px', max: '45px' };
+                                    if (colType !== 'other') return colWidthConfig[colType];
+                                    if (cellIndex === 0) return { w: 'auto', min: '100px', max: '160px' };
+                                    return { w: 'auto', min: '60px', max: 'none' };
+                                  })();
+                                  const cellWidth = dims.w;
+                                  const cellMinW = dims.min;
+                                  const cellMaxW = dims.max;
+
+                                  const isFirstSectionLabel = isFirstSection && isSimpleRow && cellIndex === 0;
+                                  const isFirstSectionValue = isFirstSection && isSimpleRow && cellIndex > 0 && !isSeparator;
+
+                                  const isVisadoTab = activeTab.title.toUpperCase().includes('VISADO') || activeTab.title.toUpperCase().includes('LEGALIZACIÓN') || activeTab.title.toUpperCase().includes('LEGALIZACION');
+                                  const shouldCenterVertically = cell.isHeader || (cell.rowSpan && cell.rowSpan > 1) || isVisadoTab || totalVisibleCols >= 3;
+                                  const vertAlign = shouldCenterVertically ? 'align-middle' : 'align-top';
 
                                   return (
                                     <td
                                       key={cell.id}
-                                      className={`border relative align-top ${
+                                      className={`border relative ${vertAlign} ${
                                         editable
                                           ? 'border-green-300 bg-green-50/50 cursor-cell hover:bg-green-100/50'
-                                          : cell.isHeader
-                                            ? 'border-gray-300 bg-gray-100/80 font-bold text-gray-800'
-                                            : 'border-gray-200 bg-gray-50/50 text-gray-600'
+                                          : isFirstSectionLabel
+                                            ? 'border-gray-200 bg-gradient-to-r from-slate-50 to-gray-50 font-semibold text-gray-700'
+                                            : isFirstSectionValue
+                                              ? 'border-gray-200 bg-white text-gray-800'
+                                              : cell.isHeader
+                                                ? 'border-gray-300 bg-gray-100/80 font-bold text-gray-800'
+                                                : 'border-gray-300 bg-white text-gray-700'
                                       }`}
                                       style={{
-                                        backgroundColor: cell.backgroundColor || undefined,
+                                        backgroundColor: cell.backgroundColor || (isFirstSectionLabel ? undefined : cell.isHeader ? '#f8fafc' : undefined),
+                                        width: cellWidth,
+                                        minWidth: cellMinW,
+                                        maxWidth: cellMaxW,
                                         padding: 0,
-                                        minWidth: isVertical ? '28px' : '40px',
+                                        ...(isFirstSection && isSimpleRow ? { borderBottom: '1px solid #e2e8f0' } : {}),
                                       }}
                                       rowSpan={cell.rowSpan}
                                       colSpan={cell.colSpan}
@@ -494,16 +1087,15 @@ export default function DocenteEditorSyllabusPage() {
                                       }}
                                     >
                                       <div
-                                        className="w-full h-full px-1 py-0.5 flex justify-start text-left"
+                                        className={`w-full h-full flex ${cell.isHeader ? 'justify-center text-center items-center' : shouldCenterVertically ? 'justify-start text-left items-center' : 'justify-start text-left items-start'} ${isFirstSectionLabel ? 'px-2 py-1' : isFirstSectionValue ? 'px-2 py-1' : 'px-1 py-0.5'}`}
                                         style={{
                                           writingMode: isVertical ? 'vertical-rl' : 'horizontal-tb',
                                           transform: isVertical ? 'rotate(180deg)' : 'none',
-                                          alignItems: 'flex-start',
                                           maxHeight: isVertical ? '100px' : 'none',
                                           whiteSpace: isVertical ? 'nowrap' : 'pre-wrap',
                                           overflow: 'hidden',
-                                          lineHeight: '1.15',
-                                          fontSize: isVertical ? '9px' : '11px',
+                                          lineHeight: isFirstSection ? '1.4' : '1.3',
+                                          fontSize: isFirstSectionLabel ? '17px' : isVertical ? '9px' : '17px',
                                         }}
                                       >
                                         {editingCell === cell.id ? (
@@ -512,14 +1104,17 @@ export default function DocenteEditorSyllabusPage() {
                                             onChange={(e) => setEditContent(e.target.value)}
                                             autoFocus
                                             onBlur={saveEdit}
-                                            className="w-full min-h-[50px] p-1 text-xs resize-y"
+                                            className="w-full min-h-[50px] p-1 text-xs resize-y border-blue-400 focus-visible:ring-1 focus-visible:ring-blue-500"
                                             onKeyDown={(e) => {
                                               if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveEdit(); }
                                               if (e.key === "Escape") cancelEdit();
                                             }}
                                           />
                                         ) : (
-                                          <div className="whitespace-pre-wrap break-words w-full" style={{ wordBreak: 'break-word', lineHeight: '1.15' }}>
+                                          <div
+                                            className={`whitespace-pre-wrap break-words w-full ${cell.isHeader ? 'text-center' : ''}`}
+                                            style={{ wordBreak: 'break-word', lineHeight: '1.3' }}
+                                          >
                                             {displayContent || <span className="opacity-0">.</span>}
                                             {editable && !displayContent && (
                                               <span className="text-green-400 italic text-[9px]">Doble clic para editar</span>
@@ -536,8 +1131,7 @@ export default function DocenteEditorSyllabusPage() {
                                   )
                                 })}
                               </tr>
-                            ))
-                          )}
+                            );})                          )}
                         </tbody>
                       </table>
                     </div>

@@ -103,8 +103,20 @@ const extraerTablasNativasWord = async (file: File): Promise<ExtractedCell[][][]
                 while (cIdx < maxCols && grid[rIdx][cIdx] !== null) cIdx++;
                 if (cIdx >= maxCols) return;
 
-                const texts = Array.from(tc.getElementsByTagName("t")).map(t => t.textContent || "");
-                const text = texts.join(" ").replace(/\s+/g, " ").trim();
+                // Extraer texto preservando saltos de línea entre párrafos (<p>)
+                const paragraphs = Array.from(tc.childNodes).filter(n => n.nodeName === "p");
+                let text: string;
+                if (paragraphs.length > 1) {
+                  // Múltiples párrafos: unir con salto de línea
+                  text = paragraphs.map(p => {
+                    const ts = Array.from((p as Element).getElementsByTagName("t"));
+                    return ts.map(t => t.textContent || "").join("").trim();
+                  }).filter(t => t.length > 0).join("\n");
+                } else {
+                  // Un solo párrafo o sin párrafos: comportamiento original
+                  const allTexts = Array.from(tc.getElementsByTagName("t")).map(t => t.textContent || "");
+                  text = allTexts.join(" ").replace(/\s{2,}/g, " ").trim();
+                }
 
                 const gsNode = tc.getElementsByTagName("gridSpan")[0];
                 const gsVal = gsNode ? (gsNode.getAttribute("w:val") || gsNode.getAttribute("val")) : null;
@@ -206,6 +218,7 @@ export default function EditorSyllabusComisionPage() {
   const periodoParam = searchParams.get("periodo")
   const syllabusIdParam = searchParams.get("id")
   const sourceParam = searchParams.get("source")
+  const nuevaParam = searchParams.get("nueva")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const fileInputRefSync = useRef<HTMLInputElement>(null)
 
@@ -213,6 +226,17 @@ export default function EditorSyllabusComisionPage() {
   const activeTab = activeSyllabus?.tabs.find(t => t.id === activeTabId);
   const tableData = activeTab ? activeTab.rows : [];
   const [asignaturaInfo, setAsignaturaInfo] = useState<any>(null)
+
+  // Filtrar syllabi por periodo seleccionado (como lo hace el admin)
+  const syllabiFiltered = (() => {
+    if (!selectedPeriod) return savedSyllabi;
+    const periodoObj = periodos.find((p: any) => p.id.toString() === selectedPeriod);
+    const periodoNombre = periodoObj?.nombre || '';
+    return savedSyllabi.filter((s: any) => {
+      const sPeriodo = String(s.periodo || '').trim();
+      return sPeriodo === selectedPeriod || sPeriodo === periodoNombre;
+    });
+  })();
 
   useEffect(() => {
     const cargarMateria = async () => {
@@ -281,35 +305,19 @@ export default function EditorSyllabusComisionPage() {
       const sPeriodo = String(s.periodo || '').trim();
       const matchPeriodo = sPeriodo === selectedPeriod || sPeriodo === periodoNombre;
       if (!matchPeriodo) return false;
-      // Si tenemos asignatura, filtrar por asignatura_id O por nombre de materia
+      // Si tenemos asignatura, filtrar ESTRICTAMENTE por asignatura_id
       if (asignaturaIdParam) {
         if (s.asignatura_id && String(s.asignatura_id) === String(asignaturaIdParam)) return true;
-        // El admin puede haber subido sin asignatura_id, buscar por nombre de materia
-        if (nombreAsignatura && s.materias) {
+        // Match por nombre de materia solo si coincide asignatura_id o no tiene asignatura_id
+        if (nombreAsignatura && s.materias && !s.asignatura_id) {
           const materiasLower = s.materias.toLowerCase();
           const nombreLower = nombreAsignatura.toLowerCase();
           if (materiasLower.includes(nombreLower) || nombreLower.includes(materiasLower)) return true;
         }
-        // El admin subió sin asignatura_id ni materia → aceptar si coincide periodo
-        if (!s.asignatura_id) return true;
         return false;
       }
       return true;
     });
-    
-    // Fallback: buscar cualquier syllabus del periodo (admin subió sin materia ni asignatura)
-    if (syllabiDelPeriodo.length === 0 && asignaturaIdParam) {
-      syllabiDelPeriodo = savedSyllabi.filter((s: any) => {
-        const sPeriodo = String(s.periodo || '').trim();
-        return sPeriodo === selectedPeriod || sPeriodo === periodoNombre;
-      });
-    }
-    
-    // Último fallback: si solo hay un syllabus en toda la lista, usarlo (generic del admin)
-    if (syllabiDelPeriodo.length === 0 && savedSyllabi.length > 0 && asignaturaIdParam) {
-      console.log('🔄 Fallback final: usando primer syllabus disponible de savedSyllabi');
-      syllabiDelPeriodo = [savedSyllabi[0]];
-    }
     
     if (syllabiDelPeriodo.length > 0) {
       const primerSyllabus = syllabiDelPeriodo[0];
@@ -469,6 +477,96 @@ export default function EditorSyllabusComisionPage() {
     cargarSyllabusDirecto();
   }, [syllabusIdParam]);
 
+  // 🆕 Crear syllabus vacío cuando se viene con ?nueva=true
+  useEffect(() => {
+    if (nuevaParam !== 'true') return;
+    if (syllabusIdParam) return; // Si tiene ID, no crear nuevo
+    if (activeSyllabusId) return; // Ya hay uno activo
+
+    // Esperar a que carguen los datos necesarios
+    if (isListLoading) return;
+    if (!asignaturaIdParam) return;
+
+    const buscarOCrearSyllabus = async () => {
+      // Primero intentar buscar uno existente en el backend para esta asignatura+periodo
+      const periodo = selectedPeriod || periodoParam || '';
+      if (periodo) {
+        try {
+          // Buscar en tabla comisión
+          const res = await apiRequest(`/api/comision-academica/syllabus/buscar?asignatura_id=${asignaturaIdParam}&periodo=${periodo}`);
+          if (res?.data) {
+            let editorData = res.data.datos_syllabus || res.data.datos_tabla;
+            if (typeof editorData === 'string') try { editorData = JSON.parse(editorData); } catch(e) { editorData = null; }
+            if (editorData) {
+              editorData.id = res.data.id;
+              if (!editorData.name) editorData.name = res.data.nombre;
+              if (editorData.tabs) {
+                editorData.tabs = editorData.tabs.map((t: any) => ({
+                  ...t, rows: (t.rows || []).map((r: any) => ({
+                    ...r, cells: (r.cells || []).map((c: any) => ({
+                      ...c, backgroundColor: c.styles?.backgroundColor || c.backgroundColor,
+                      textColor: c.styles?.textColor || c.textColor,
+                      textAlign: c.styles?.textAlign || c.textAlign,
+                      textOrientation: c.styles?.textOrientation || c.textOrientation,
+                      isEditable: true
+                    }))
+                  }))
+                }));
+              } else if (editorData.rows) {
+                editorData.tabs = [{ id: `tab-${Date.now()}`, title: 'General', rows: editorData.rows }];
+              }
+              setSyllabi([editorData]);
+              setActiveSyllabusId(editorData.id);
+              setActiveTabId(editorData.tabs?.[0]?.id || null);
+              return; // Encontrado, no crear template vacío
+            }
+          }
+        } catch(e) { /* no existe en comisión, seguir buscando */ }
+
+        // Buscar en tabla general (admin)
+        try {
+          const verRes = await apiRequest(`/api/syllabi/verificar-existencia?asignatura_id=${asignaturaIdParam}&periodo=${periodo}`);
+          if (verRes?.existe && verRes?.syllabus?.id) {
+            const fullRes = await apiRequest(`/api/syllabi/${verRes.syllabus.id}`);
+            if (fullRes?.data) {
+              let editorData = fullRes.data.datos_syllabus || fullRes.data.datos_tabla;
+              if (typeof editorData === 'string') try { editorData = JSON.parse(editorData); } catch(e) { editorData = null; }
+              if (editorData) {
+                editorData.id = fullRes.data.id;
+                if (!editorData.name) editorData.name = fullRes.data.nombre;
+                if (editorData.tabs) {
+                  editorData.tabs = editorData.tabs.map((t: any) => ({
+                    ...t, rows: (t.rows || []).map((r: any) => ({
+                      ...r, cells: (r.cells || []).map((c: any) => ({
+                        ...c, backgroundColor: c.styles?.backgroundColor || c.backgroundColor,
+                        textColor: c.styles?.textColor || c.textColor,
+                        textAlign: c.styles?.textAlign || c.textAlign,
+                        textOrientation: c.styles?.textOrientation || c.textOrientation,
+                        isEditable: true
+                      }))
+                    }))
+                  }));
+                } else if (editorData.rows) {
+                  editorData.tabs = [{ id: `tab-${Date.now()}`, title: 'General', rows: editorData.rows }];
+                }
+                setSyllabi([editorData]);
+                setActiveSyllabusId(editorData.id);
+                setActiveTabId(editorData.tabs?.[0]?.id || null);
+                return; // Encontrado, no crear template vacío
+              }
+            }
+          }
+        } catch(e) { /* no existe en general */ }
+      }
+
+      // No se encontró ninguno existente → no crear template, dejar la pantalla inicial
+      // para que el usuario seleccione de la lista o suba un Word
+      console.log('ℹ️ No se encontró syllabus existente para esta asignatura/periodo');
+    };
+
+    buscarOCrearSyllabus();
+  }, [nuevaParam, syllabusIdParam, activeSyllabusId, isListLoading, asignaturaInfo, selectedPeriod]);
+
   const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
     const fullUrl = `http://localhost:4000${endpoint}`
     const currentToken = token || getToken()
@@ -576,7 +674,11 @@ export default function EditorSyllabusComisionPage() {
             const wordCell = wordRow[wColIdx];
             if (!wordCell) return cell;
             
-            const isVertical = ["PRESENCIAL", "AUTÓNOMO", "PRACTICO", "SINCRÓNICA", "TA", "PFAE"].some(k => wordCell.text.toUpperCase().includes(k));
+            const upperText = wordCell.text.toUpperCase().trim();
+            // Solo vertical para headers cortos de columna, nunca para datos como "Presencial-Áulico"
+            const isShortHeader = upperText.length <= 14 && !upperText.includes('-');
+            const matchesVert = ["AUTÓNOMO", "PRACTICO", "SINCRÓNICA", "PFAE"].some(k => upperText.includes(k)) || upperText === 'TA' || (upperText === 'PRESENCIAL' || upperText === 'HD. PRESENCIAL');
+            const isVertical = isShortHeader && matchesVert;
 
             // 🔥 APLICAMOS LA MAGIA: Clonar isHidden para no desfasar celdas en React
             return { 
@@ -585,7 +687,7 @@ export default function EditorSyllabusComisionPage() {
                 rowSpan: wordCell.isHidden ? 0 : wordCell.rowSpan,
                 colSpan: wordCell.isHidden ? 0 : wordCell.colSpan,
                 isEditable: !wordCell.isHidden,
-                textOrientation: (wordCell.text.length < 20 && isVertical) ? 'vertical' : 'horizontal'
+                textOrientation: isVertical ? 'vertical' : 'horizontal'
             };
         });
       }
@@ -672,46 +774,80 @@ export default function EditorSyllabusComisionPage() {
     setSyllabi(p => p.map(s => s.id === id ? { ...s, ...updates, metadata: { ...s.metadata, ...(updates.metadata || {}), updatedAt: new Date().toISOString() } } : s))
   }
 
-  const handleLoadSyllabus = (syllabusId: string) => {
+  const handleLoadSyllabus = async (syllabusId: string) => {
     if (!syllabusId) return;
     const id = parseInt(syllabusId, 10);
     const syllabusToLoad = savedSyllabi.find((s: any) => Number(s.id) === id);
-    if (syllabusToLoad) {
-      let editorData: any = syllabusToLoad.datos_syllabus || syllabusToLoad.datos_tabla;
-      if (typeof editorData === 'string') {
-        try { editorData = JSON.parse(editorData); } catch(e) { return; }
-      }
-      if (!editorData) return;
-      editorData.id = syllabusToLoad.id;
-      if (!editorData.name) editorData.name = syllabusToLoad.nombre;
-      
-      // Normalizar tabs
-      if (editorData.tabs) {
-        editorData.tabs = editorData.tabs.map((t: any) => ({
-          ...t, rows: (t.rows || []).map((r: any) => ({
-            ...r, cells: (r.cells || []).map((c: any) => ({
-              ...c, backgroundColor: c.styles?.backgroundColor || c.backgroundColor,
-              textColor: c.styles?.textColor || c.textColor,
-              textAlign: c.styles?.textAlign || c.textAlign,
-              textOrientation: c.styles?.textOrientation || c.textOrientation,
-              isEditable: true
-            }))
-          }))
-        }));
-      } else if (editorData.rows) {
-        editorData.tabs = [{ id: `tab-${Date.now()}`, title: 'General', rows: editorData.rows }];
-      }
-      
-      setSyllabi([editorData]);
-      setActiveSyllabusId(editorData.id);
-      setActiveTabId(editorData.tabs?.[0]?.id || null);
-      // Solo cambiar periodo si el del syllabus es un ID válido de periodos
-      if (syllabusToLoad.periodo) {
-        const esIdValido = periodos.some((p: any) => p.id.toString() === String(syllabusToLoad.periodo));
-        if (esIdValido) {
-          setSelectedPeriod(String(syllabusToLoad.periodo));
+    if (!syllabusToLoad) return;
+
+    let editorData: any = syllabusToLoad.datos_syllabus || syllabusToLoad.datos_tabla;
+    
+    // Si no hay datos_syllabus (la lista de comisión no los incluye), buscar por ID en la API
+    if (!editorData) {
+      try {
+        const source = (syllabusToLoad as any)._source || 'comision';
+        let fullData: any = null;
+        if (source === 'comision') {
+          try {
+            const res = await apiRequest(`/api/comision-academica/syllabus/${id}`);
+            if (res?.data) fullData = res.data;
+          } catch(e) {
+            const res = await apiRequest(`/api/syllabi/${id}`);
+            if (res?.data) fullData = res.data;
+          }
+        } else {
+          try {
+            const res = await apiRequest(`/api/syllabi/${id}`);
+            if (res?.data) fullData = res.data;
+          } catch(e) {
+            const res = await apiRequest(`/api/comision-academica/syllabus/${id}`);
+            if (res?.data) fullData = res.data;
+          }
         }
-        // Si no es un ID válido, mantener el selectedPeriod actual (que ya vino del URL)
+        if (fullData) {
+          editorData = fullData.datos_syllabus || fullData.datos_tabla;
+          // Actualizar savedSyllabi con los datos completos
+          setSavedSyllabi(prev => prev.map(s => Number(s.id) === id ? { ...s, datos_syllabus: editorData } : s));
+        }
+      } catch(e) {
+        console.error('Error al cargar datos completos del syllabus:', e);
+        return;
+      }
+    }
+
+    if (typeof editorData === 'string') {
+      try { editorData = JSON.parse(editorData); } catch(e) { return; }
+    }
+    if (!editorData) return;
+    
+    editorData.id = syllabusToLoad.id;
+    if (!editorData.name) editorData.name = syllabusToLoad.nombre;
+    
+    // Normalizar tabs
+    if (editorData.tabs) {
+      editorData.tabs = editorData.tabs.map((t: any) => ({
+        ...t, rows: (t.rows || []).map((r: any) => ({
+          ...r, cells: (r.cells || []).map((c: any) => ({
+            ...c, backgroundColor: c.styles?.backgroundColor || c.backgroundColor,
+            textColor: c.styles?.textColor || c.textColor,
+            textAlign: c.styles?.textAlign || c.textAlign,
+            textOrientation: c.styles?.textOrientation || c.textOrientation,
+            isEditable: true
+          }))
+        }))
+      }));
+    } else if (editorData.rows) {
+      editorData.tabs = [{ id: `tab-${Date.now()}`, title: 'General', rows: editorData.rows }];
+    }
+    
+    setSyllabi([editorData]);
+    setActiveSyllabusId(editorData.id);
+    setActiveTabId(editorData.tabs?.[0]?.id || null);
+    // Solo cambiar periodo si el del syllabus es un ID válido de periodos
+    if (syllabusToLoad.periodo) {
+      const esIdValido = periodos.some((p: any) => p.id.toString() === String(syllabusToLoad.periodo));
+      if (esIdValido) {
+        setSelectedPeriod(String(syllabusToLoad.periodo));
       }
     }
   };
@@ -767,7 +903,11 @@ export default function EditorSyllabusComisionPage() {
             const isUnitHeader = currentSectionTitle.includes("Contenidos") && gridRow.some(c => c.text.toUpperCase().includes("UNIDADES TEM"));
 
             const finalCells: TableCell[] = gridRow.map((extCell, cIdx) => {
-                const isVertical = ["PRESENCIAL", "AUTÓNOMO", "PRACTICO", "SINCRÓNICA", "TA", "PFAE"].some(k => extCell.text.toUpperCase().includes(k));
+                const upperText = extCell.text.toUpperCase().trim();
+                // Solo aplicar vertical a headers de columna (texto corto, sin guiones/espacios largos)
+                const isHeaderCell = (isUnitHeader || rIdx === 0) && upperText.length <= 14 && !upperText.includes('-');
+                const matchesVerticalKeyword = ["AUTÓNOMO", "PRACTICO", "SINCRÓNICA", "PFAE"].some(k => upperText.includes(k)) || upperText === 'TA' || (upperText === 'PRESENCIAL' || upperText === 'HD. PRESENCIAL');
+                const isVertical = isHeaderCell && matchesVerticalKeyword;
                 return {
                     id: `cell-${Date.now()}-${tIdx}-${rIdx}-${cIdx}`,
                     content: extCell.text,
@@ -775,7 +915,7 @@ export default function EditorSyllabusComisionPage() {
                     rowSpan: extCell.isHidden ? 0 : extCell.rowSpan, 
                     colSpan: extCell.isHidden ? 0 : extCell.colSpan, 
                     isEditable: !extCell.isHidden, 
-                    textOrientation: (extCell.text.length < 20 && isVertical) ? 'vertical' : 'horizontal',
+                    textOrientation: isVertical ? 'vertical' : 'horizontal',
                     backgroundColor: isUnitHeader ? '#f0fdf4' : undefined 
                 };
             });
@@ -960,11 +1100,17 @@ export default function EditorSyllabusComisionPage() {
     for (const tab of activeSyllabus.tabs) {
       if (!tab.rows || tab.rows.length === 0) continue;
 
-      // Nueva página si no hay espacio suficiente
-      if (currentY + 15 > pageHeight - 12) { doc.addPage(); currentY = 12; }
+      // Nueva página si no hay espacio suficiente para título + al menos el header + primera fila de datos
+      // Para ESTRUCTURA se necesita más espacio (~80mm) para header + primera fila de datos
+      const isEstructuraSectionPreCheck = tab.title.toUpperCase().includes('ESTRUCTURA') || tab.title.toUpperCase().includes('ASIGNATURA');
+      const minSpace = isEstructuraSectionPreCheck ? 80 : 25;
+      if (currentY + minSpace > pageHeight - 10) { doc.addPage(); currentY = 10; }
+
+      // Guardar posición antes de dibujar título (para calcular startY de la tabla)
+      const titleStartY = currentY;
 
       // Título de sección con estilo profesional
-      currentY += 3; // espacio antes del título
+      currentY += 1.5; // espacio antes del título
       doc.setFontSize(8.5);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(25, 50, 95); // azul oscuro
@@ -976,7 +1122,13 @@ export default function EditorSyllabusComisionPage() {
       doc.line(marginL, currentY, marginL + contentWidth, currentY);
       currentY += 2;
 
+      // Guardar info del título para redibujar si autoTable salta de página
+      const sectionTitle = tab.title.toUpperCase();
+      const titlePageNum = doc.getNumberOfPages();
+
       const isFirstSection = isFirstSectionTab(tab.title);
+      const isVisadoSection = tab.title.toUpperCase().includes('VISADO') || tab.title.toUpperCase().includes('LEGALIZACIÓN') || tab.title.toUpperCase().includes('LEGALIZACION');
+      const isEstructuraSection = tab.title.toUpperCase().includes('ESTRUCTURA') || tab.title.toUpperCase().includes('ASIGNATURA');
 
       if (isFirstSection) {
         // ======= PRIMERA SECCIÓN: Reconstruir como tabla limpia de 3 columnas =======
@@ -993,7 +1145,7 @@ export default function EditorSyllabusComisionPage() {
             if (!txt) continue;
             cleanRows.push([{
               content: txt, colSpan: 3,
-              styles: { fontStyle: 'bold' as const, fillColor: '#E5E7EB', halign: 'left' as const, fontSize: 6 }
+              styles: { fontStyle: 'bold' as const, fillColor: '#E5E7EB', halign: 'left' as const, fontSize: 8 }
             }]);
           } else {
             // Separar en: label, separador, valor(es)
@@ -1036,7 +1188,7 @@ export default function EditorSyllabusComisionPage() {
               2: { cellWidth: valW },
             },
             styles: {
-              fontSize: 5.5,
+              fontSize: 8,
               cellPadding: { top: 0.5, right: 1, bottom: 0.5, left: 1 },
               lineColor: '#9CA3AF',
               lineWidth: 0.15,
@@ -1050,7 +1202,15 @@ export default function EditorSyllabusComisionPage() {
           });
 
           currentY = (doc as any).lastAutoTable?.finalY || (doc as any).previousAutoTable?.finalY || currentY + 10;
-          currentY += 4; // más espacio entre secciones
+          // Si autoTable saltó a nueva página, borrar título huérfano
+          const pagesAfter1 = doc.getNumberOfPages();
+          if (pagesAfter1 > titlePageNum) {
+            doc.setPage(titlePageNum);
+            doc.setFillColor(255, 255, 255);
+            doc.rect(marginL - 1, titleStartY - 1, contentWidth + 2, 8, 'F');
+            doc.setPage(pagesAfter1);
+          }
+          currentY += 2; // más espacio entre secciones
         }
       } else {
         // ======= SECCIONES NORMALES: renderizar fiel con rowSpan/colSpan =======
@@ -1160,11 +1320,21 @@ export default function EditorSyllabusComisionPage() {
         // PASO 5: Construir body (todo va al body para evitar que rowSpan del header se coma filas)
         const body: any[][] = [];
 
+        // Calcular cuántas filas ocupa el header original (su rowSpan máximo)
+        let headerOriginalSpan = 1;
+        if (headerRowIdx >= 0) {
+          const hdrCells = tab.rows[headerRowIdx].cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
+          headerOriginalSpan = Math.max(1, ...hdrCells.map(c => c.rowSpan || 1));
+        }
+
         for (let ri = 0; ri < tab.rows.length; ri++) {
           const row = tab.rows[ri];
           const pdfRow: any[] = [];
           const visibleCells = row.cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
           if (visibleCells.length === 0) continue;
+
+          // Saltar filas que estaban absorbidas por el rowSpan del header
+          if (headerRowIdx >= 0 && ri > headerRowIdx && ri < headerRowIdx + headerOriginalSpan) continue;
 
           // Header detectado: estilo diferente, rowSpan forzado a 1
           const isRealHeader = (ri === headerRowIdx);
@@ -1198,6 +1368,9 @@ export default function EditorSyllabusComisionPage() {
             // CLAVE: Forzar rowSpan=1 para el header para evitar que se coma la primera fila de datos
             const safeRowSpan = isRealHeader ? 1 : (cell.rowSpan || 1);
 
+            // Para VISADO: diferenciar fila de nombres (firma) vs fila de fechas
+            const isVisadoDataRow = isVisadoSection && !isRealHeader;
+            const isVisadoFechaRow = isVisadoDataRow && content.trim().toLowerCase().startsWith('fecha');
             pdfRow.push({
               content: displayContent,
               rowSpan: safeRowSpan,
@@ -1206,13 +1379,17 @@ export default function EditorSyllabusComisionPage() {
                 fontStyle: isRealHeader ? 'bold' as const : 'normal' as const,
                 fillColor: isRealHeader ? '#E8EDF2' : (cell.backgroundColor || '#FFFFFF'),
                 textColor: isRealHeader ? '#1E3A5F' : '#1F2937',
-                fontSize: isRealHeader ? 5.5 : 6,
-                cellPadding: isRealHeader 
-                  ? { top: 1.5, right: 1, bottom: 1.5, left: 1 }
-                  : { top: 0.8, right: 0.8, bottom: 0.8, left: 0.8 },
-                halign: isRealHeader ? 'center' as const : 'left' as const,
-                valign: isRealHeader ? 'middle' as const : 'top' as const,
-                minCellHeight: isRealHeader ? 6 : 3,
+                fontSize: isVisadoSection ? 10 : isRealHeader ? 7.5 : 8,
+                cellPadding: isVisadoFechaRow
+                  ? { top: 2, right: 3, bottom: 2, left: 3 }
+                  : isVisadoDataRow
+                    ? { top: 20, right: 3, bottom: 3, left: 3 }
+                    : isRealHeader 
+                      ? { top: 1.5, right: 1, bottom: 1.5, left: 1 }
+                      : { top: 0.8, right: 0.8, bottom: 0.8, left: 0.8 },
+                halign: isVisadoSection ? 'center' as const : isEstructuraSection ? 'center' as const : isRealHeader ? 'center' as const : 'left' as const,
+                valign: isVisadoDataRow ? 'bottom' as const : 'middle' as const,
+                minCellHeight: isVisadoFechaRow ? 8 : isVisadoDataRow ? 30 : isRealHeader ? 6 : 3,
                 overflow: 'linebreak' as const,
               }
             });
@@ -1231,84 +1408,139 @@ export default function EditorSyllabusComisionPage() {
             if (colWidthMap[i]) colStyles[i] = { cellWidth: colWidthMap[i] };
           }
 
+          // Rastrear celdas combinadas (rowSpan>1) para limpiar bordes internos
+          const mergedCellsOnPage: Array<{x: number, y: number, w: number, h: number, bg: any, rawContent: string, text: string[], styles: any, page: number}> = [];
+
           autoTable(doc, {
             body: body as any,
             startY: currentY,
             theme: 'grid',
             styles: {
-              fontSize: 6,
-              cellPadding: { top: 0.8, right: 0.8, bottom: 0.8, left: 0.8 },
+              fontSize: isVisadoSection ? 10 : 8,
+              cellPadding: isVisadoSection 
+                ? { top: 6, right: 3, bottom: 6, left: 3 }
+                : isEstructuraSection
+                  ? { top: 1.2, right: 1, bottom: 1.2, left: 1 }
+                  : { top: 0.8, right: 0.8, bottom: 0.8, left: 0.8 },
               lineColor: '#9CA3AF',
               lineWidth: 0.15,
               overflow: 'linebreak',
-              halign: 'left',
-              valign: 'top',
+              halign: isEstructuraSection ? 'center' : 'left',
+              valign: 'middle',
+              minCellHeight: isVisadoSection ? 20 : 3,
             },
             columnStyles: colStyles,
-            margin: { left: marginL, right: marginR },
+            margin: { left: marginL, right: marginR, top: 15 },
             tableWidth: contentWidth,
+            didDrawCell: (data: any) => {
+              // Para sección ESTRUCTURA: registrar celdas combinadas para limpiar bordes internos
+              if (isEstructuraSection && data.cell.rowSpan > 1) {
+                const rawContent = typeof data.cell.raw === 'object' ? (data.cell.raw?.content || '') : (data.cell.raw || '');
+                mergedCellsOnPage.push({
+                  x: data.cell.x,
+                  y: data.cell.y,
+                  w: data.cell.width,
+                  h: data.cell.height,
+                  bg: data.cell.styles.fillColor,
+                  rawContent: String(rawContent),
+                  text: data.cell.text || [],
+                  styles: { ...data.cell.styles },
+                  page: doc.getNumberOfPages()
+                });
+              }
+            },
+            didDrawPage: (data: any) => {
+              // Limpiar bordes internos en celdas combinadas de ESTRUCTURA
+              if (isEstructuraSection && mergedCellsOnPage.length > 0) {
+                const currentPage = doc.getNumberOfPages();
+                for (const mc of mergedCellsOnPage) {
+                  if (mc.page !== currentPage) continue;
+                  // Rellenar el interior de la celda combinada para ocultar líneas internas
+                  const bg = mc.bg;
+                  if (bg) {
+                    if (typeof bg === 'string') doc.setFillColor(bg);
+                    else if (Array.isArray(bg)) doc.setFillColor(bg[0] || 255, bg[1] || 255, bg[2] || 255);
+                    else doc.setFillColor(255, 255, 255);
+                  } else {
+                    doc.setFillColor(255, 255, 255);
+                  }
+                  const lw = 0.15;
+                  doc.rect(mc.x + lw, mc.y + lw, mc.w - 2 * lw, mc.h - 2 * lw, 'F');
+
+                  // Redibujar el texto de la celda combinada - calcular posición manualmente
+                  const textLines = mc.text && mc.text.length > 0 ? mc.text : (mc.rawContent ? mc.rawContent.split('\n') : []);
+                  if (textLines.length > 0 && textLines.some((t: string) => t.trim().length > 0)) {
+                    const tc = mc.styles.textColor;
+                    if (tc) {
+                      if (typeof tc === 'string') doc.setTextColor(tc);
+                      else if (Array.isArray(tc)) doc.setTextColor(tc[0], tc[1], tc[2]);
+                      else doc.setTextColor(31, 41, 55);
+                    }
+                    const fs = mc.styles.fontSize || 8;
+                    doc.setFontSize(fs);
+                    doc.setFont('helvetica', mc.styles.fontStyle || 'normal');
+
+                    // Calcular posición del texto basado en alineación
+                    const pad = 1.2;
+                    const cellInnerW = mc.w - 2 * pad;
+                    const halign = mc.styles.halign || 'center';
+                    let textX: number;
+                    if (halign === 'center') textX = mc.x + mc.w / 2;
+                    else if (halign === 'right') textX = mc.x + mc.w - pad;
+                    else textX = mc.x + pad;
+
+                    // Posición vertical centrada en la celda
+                    const lineH = fs * 0.4; // aprox altura de línea en mm
+                    const totalTextH = textLines.length * lineH;
+                    const textY = mc.y + (mc.h - totalTextH) / 2 + lineH * 0.7;
+
+                    for (let li = 0; li < textLines.length; li++) {
+                      const line = textLines[li];
+                      if (line.trim().length === 0) continue;
+                      doc.text(line, textX, textY + li * lineH, {
+                        align: halign,
+                        maxWidth: cellInnerW
+                      });
+                    }
+                  }
+
+                  // Redibujar los bordes exteriores de la celda combinada
+                  doc.setDrawColor('#9CA3AF');
+                  doc.setLineWidth(lw);
+                  doc.rect(mc.x, mc.y, mc.w, mc.h, 'S');
+                }
+                mergedCellsOnPage.length = 0;
+              }
+
+              // Redibujar título de sección en páginas de continuación de la tabla
+              if (data.pageNumber > 1 || data.pageCount > 1) {
+                doc.setFontSize(8.5);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(25, 50, 95);
+                doc.text(sectionTitle + ' (cont.)', marginL, 10);
+                doc.setDrawColor(25, 50, 95);
+                doc.setLineWidth(0.4);
+                doc.line(marginL, 11, marginL + contentWidth, 11);
+              }
+            },
           });
 
           currentY = (doc as any).lastAutoTable?.finalY || (doc as any).previousAutoTable?.finalY || currentY + 10;
-          currentY += 4;
-        }
-      }
-    }
-
-    // --- FIRMAS ---
-    const cargos = [
-      { cargo: 'DECANO/A DE FACULTAD', nombre: '', patrones: ['DECANO'] },
-      { cargo: 'DIRECTOR/A ACADÉMICO/A', nombre: '', patrones: ['DIRECTOR'] },
-      { cargo: 'COORDINADOR/A DE CARRERA', nombre: '', patrones: ['COORDINADOR'] },
-      { cargo: 'DOCENTE', nombre: '', patrones: ['DOCENTE'] },
-    ];
-
-    // Buscar nombres en las pestañas
-    for (const tab of activeSyllabus.tabs) {
-      for (const row of tab.rows) {
-        for (let c = 0; c < row.cells.length; c++) {
-          const texto = (row.cells[c].content || '').trim().toUpperCase();
-          if (!texto || texto.length < 4) continue;
-          for (const cargoObj of cargos) {
-            if (cargoObj.nombre) continue;
-            if (!cargoObj.patrones.some(p => texto.includes(p))) continue;
-            const lineas = row.cells[c].content.split('\n').map(l => l.trim()).filter(l => l.length > 3);
-            if (lineas.length >= 2) {
-              const nombre = lineas.find(l => !cargoObj.patrones.some(p => l.toUpperCase().includes(p)));
-              if (nombre) { cargoObj.nombre = nombre; continue; }
-            }
-            if (c + 1 < row.cells.length) {
-              const next = (row.cells[c + 1].content || '').trim();
-              if (next.length > 3 && !cargoObj.patrones.some(p => next.toUpperCase().includes(p))) cargoObj.nombre = next;
-            }
+          // Si autoTable saltó a nueva página, borrar título huérfano y redibujar
+          const pagesAfter2 = doc.getNumberOfPages();
+          if (pagesAfter2 > titlePageNum) {
+            doc.setPage(titlePageNum);
+            doc.setFillColor(255, 255, 255);
+            doc.rect(marginL - 1, titleStartY - 1, contentWidth + 2, 8, 'F');
+            doc.setPage(pagesAfter2);
           }
+          currentY += 2;
         }
       }
     }
 
-    let firmaY = currentY + 15;
-    if (firmaY + 40 > pageHeight) { doc.addPage(); firmaY = 25; }
-
-    const marginLeft = 15;
-    const usableWidth = pageWidth - 30;
-    const colWidth = usableWidth / 4;
-    const lineLength = colWidth - 15;
-
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.text('FIRMAS DE RESPONSABILIDAD', pageWidth / 2, firmaY, { align: 'center' });
-    firmaY += 12;
-
-    for (let i = 0; i < cargos.length; i++) {
-      const x = marginLeft + (colWidth * i) + (colWidth / 2);
-      doc.setLineWidth(0.4);
-      doc.line(x - lineLength / 2, firmaY, x + lineLength / 2, firmaY);
-      doc.setFontSize(6.5);
-      doc.setFont('helvetica', 'normal');
-      doc.text(cargos[i].nombre || '________________________', x, firmaY + 4, { align: 'center', maxWidth: lineLength });
-      doc.setFont('helvetica', 'bold');
-      doc.text(cargos[i].cargo, x, firmaY + 10, { align: 'center', maxWidth: lineLength });
-    }
+    // --- FIRMAS (solo VISADO, sin sección extra) ---
+    // No se agrega sección "FIRMAS DE RESPONSABILIDAD" - el VISADO del syllabus ya contiene las firmas
 
     doc.save(`Syllabus_${activeSyllabus.name}.pdf`);
   }
@@ -1345,7 +1577,7 @@ export default function EditorSyllabusComisionPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={["administrador", "comision_academica", "profesor"]}>
+    <ProtectedRoute allowedRoles={["administrador", "comision_academica", "comision", "profesor"]}>
       <div className="min-h-screen bg-gray-50">
         <MainHeader />
         <main className="max-w-7xl mx-auto px-6 py-8">
@@ -1395,10 +1627,10 @@ export default function EditorSyllabusComisionPage() {
                       
                       <div className="border-t pt-4">
                         <h3 className="font-semibold mb-3">O seleccione uno existente:</h3>
-                        {isListLoading ? <p className="text-center py-4">Cargando...</p> : savedSyllabi.length > 0 ? (
+                        {isListLoading ? <p className="text-center py-4">Cargando...</p> : syllabiFiltered.length > 0 ? (
                           <div className="space-y-2 max-h-96 overflow-y-auto">
-                            {savedSyllabi.map(s => (
-                              <div key={s.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
+                            {syllabiFiltered.map(s => (
+                              <div key={`modal-${s.id}`} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
                                 <div><p className="font-medium">{s.nombre}</p><p className="text-sm text-gray-500">{s.periodo} - {s.materias}</p></div>
                                 <Button onClick={() => { handleLoadSyllabus(s.id.toString()); setShowSyllabusSelector(false); }} className="bg-emerald-600">Seleccionar</Button>
                               </div>
@@ -1410,6 +1642,55 @@ export default function EditorSyllabusComisionPage() {
                   </Card>
                 </div>
               )}
+
+              {/* Tabla de Syllabus Disponibles filtrados por periodo (como admin) */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Syllabus Disponibles</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {isListLoading ? (
+                    <p className="text-center py-8">Cargando...</p>
+                  ) : syllabiFiltered.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-sm font-semibold">Nombre</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold">Periodo</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold">Materias</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold">Origen</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold">Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {syllabiFiltered.map(s => (
+                            <tr key={`list-${s.id}`} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 text-sm">{s.nombre}</td>
+                              <td className="px-4 py-3 text-sm">{s.periodo}</td>
+                              <td className="px-4 py-3 text-sm">{s.materias}</td>
+                              <td className="px-4 py-3 text-sm">
+                                <span className={`px-2 py-1 rounded text-xs ${(s as any)._source === 'comision' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
+                                  {(s as any)._source === 'comision' ? 'Comisión' : 'General'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm">
+                                <Button size="sm" onClick={() => handleLoadSyllabus(s.id.toString())} className="bg-emerald-600 hover:bg-emerald-700">
+                                  Cargar
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-center text-gray-500 py-8">
+                      {selectedPeriod ? 'No hay syllabus disponibles para este periodo. Use el botón "Nuevo" para subir uno.' : 'Seleccione un periodo para ver los syllabus disponibles.'}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
             </>
           ) : (
             <>
@@ -1495,15 +1776,75 @@ export default function EditorSyllabusComisionPage() {
                                   const isSelected = selectedCells.includes(cell.id);
                                   const isReadOnly = isCellReadOnly(cell, rowIndex, cellIndex);
                                   const displayContent = getAutoFilledContent(cell, rowIndex, cellIndex);
-                                  const isVertical = cell.textOrientation === 'vertical';
+
+                                  // Determinar si estamos en la primera sección (datos generales, filas con pocas columnas)
+                                  const isFirstSection = activeTab.title.toUpperCase().includes('GENERAL') || activeTab.title.toUpperCase().includes('INFORMACIÓN') || activeTab.title.toUpperCase().includes('DATOS');
+                                  // En la primera sección (datos generales) nunca mostrar texto vertical
+                                  // Para datos como "Presencial-Áulico": nunca vertical (tiene guion o >14 chars)
+                                  const isVertical = (() => {
+                                    if (cell.textOrientation !== 'vertical') return false;
+                                    if (isFirstSection) return false;
+                                    if (contentTrimmed.includes('-') || contentTrimmed.length > 14) return false;
+                                    return true;
+                                  })();
 
                                   // Detector de separadores (":" y similares)
                                   const isSeparator = contentTrimmed === ':' || (contentTrimmed.length <= 2 && !/[a-zA-Z0-9]/.test(contentTrimmed) && contentTrimmed.length > 0);
 
-                                  // Determinar si estamos en la primera sección (datos generales, filas con pocas columnas)
-                                  const isFirstSection = activeTab.title.toUpperCase().includes('GENERAL') || activeTab.title.toUpperCase().includes('INFORMACIÓN') || activeTab.title.toUpperCase().includes('DATOS');
                                   const totalVisibleCols = row.cells.filter(c => c.rowSpan > 0 && c.colSpan > 0).length;
                                   const isSimpleRow = totalVisibleCols <= 4; // filas tipo etiqueta-valor
+
+                                  // Detectar tipo de columna desde el header de esta pestaña
+                                  const getHeaderColType = () => {
+                                    if (!activeTab || !activeTab.rows) return 'other';
+                                    // Buscar la fila header
+                                    for (const hRow of activeTab.rows) {
+                                      const vis = hRow.cells.filter(c => c.rowSpan > 0 && c.colSpan > 0);
+                                      if (vis.length < 3 || !vis.every(c => c.isHeader)) continue;
+                                      // Encontrar qué header corresponde a este cellIndex
+                                      let col = 0;
+                                      for (const hc of vis) {
+                                        const span = hc.colSpan || 1;
+                                        if (cellIndex >= col && cellIndex < col + span) {
+                                          const t = (hc.content || '').trim().toUpperCase();
+                                          if (t.includes('UNIDAD') || t.includes('TEMÁT') || t.includes('TEMAT')) return 'unidad';
+                                          if (t.includes('CONTENIDO')) return 'contenido';
+                                          if (t.includes('RESULTADO') || t.includes('APRENDIZAJE')) return 'resultado';
+                                          if (t.includes('CRITERIO')) return 'criterio';
+                                          if (t.includes('INSTRUMENTO')) return 'instrumento';
+                                          if (t.includes('METODOLOG') || t.includes('ENSEÑANZA')) return 'metodologia';
+                                          if (t.includes('RECURSO') || t.includes('DIDÁCTICO')) return 'recursos';
+                                          if (t.includes('ESCENARIO')) return 'escenario';
+                                          if (t.includes('BIBLIOGRAF') || t.includes('FUENTE')) return 'biblio';
+                                          if (t.includes('FECHA') || t.includes('PARALELO')) return 'fecha';
+                                          if (t.includes('PRESENCIAL') || t.includes('SINCRÓNIC') || t.includes('SINCRONIC')) return 'horas';
+                                          if (t === 'PFAE' || t === 'TA') return 'pfae';
+                                          return 'other';
+                                        }
+                                        col += span;
+                                      }
+                                      break;
+                                    }
+                                    return 'other';
+                                  };
+                                  const colType = cell.isHeader ? getHeaderColType() : getHeaderColType();
+
+                                  // Anchos proporcionales por tipo de columna
+                                  const colWidthConfig: Record<string, { w: string, min: string, max: string }> = {
+                                    unidad: { w: 'auto', min: '100px', max: '160px' },
+                                    contenido: { w: 'auto', min: '130px', max: '220px' },
+                                    resultado: { w: 'auto', min: '130px', max: '250px' },
+                                    criterio: { w: 'auto', min: '100px', max: '180px' },
+                                    instrumento: { w: 'auto', min: '100px', max: '170px' },
+                                    metodologia: { w: 'auto', min: '100px', max: '180px' },
+                                    recursos: { w: 'auto', min: '120px', max: '200px' },
+                                    escenario: { w: 'auto', min: '80px', max: '130px' },
+                                    biblio: { w: 'auto', min: '100px', max: '170px' },
+                                    fecha: { w: 'auto', min: '80px', max: '140px' },
+                                    horas: { w: 'auto', min: '35px', max: '55px' },
+                                    pfae: { w: 'auto', min: '30px', max: '45px' },
+                                    other: { w: 'auto', min: '60px', max: 'none' },
+                                  };
 
                                   // Lógica de anchos compacta
                                   const dims = (() => {
@@ -1517,8 +1858,9 @@ export default function EditorSyllabusComisionPage() {
                                     if (isVertical) return { w: '28px', min: '28px', max: '28px' };
                                     if (isSeparator) return { w: '20px', min: '20px', max: '20px' };
                                     if (contentTrimmed.length <= 4 && cellIndex > 1 && !cell.isHeader) return { w: '35px', min: '35px', max: '45px' };
-                                    if (cellIndex === 0) return { w: 'auto', min: '100px', max: '180px' };
-                                    if (cellIndex === 1 && row.cells.length > 4) return { w: 'auto', min: '120px', max: '250px' };
+                                    // Usar anchos por tipo de columna detectado desde headers
+                                    if (colType !== 'other') return colWidthConfig[colType];
+                                    if (cellIndex === 0) return { w: 'auto', min: '100px', max: '160px' };
                                     return { w: 'auto', min: '60px', max: 'none' };
                                   })();
                                   const cellWidth = dims.w;
@@ -1529,10 +1871,16 @@ export default function EditorSyllabusComisionPage() {
                                   const isFirstSectionLabel = isFirstSection && isSimpleRow && cellIndex === 0;
                                   const isFirstSectionValue = isFirstSection && isSimpleRow && cellIndex > 0 && !isSeparator;
 
+                                  // Detectar si estamos en pestaña VISADO
+                                  const isVisadoTab = activeTab.title.toUpperCase().includes('VISADO') || activeTab.title.toUpperCase().includes('LEGALIZACIÓN') || activeTab.title.toUpperCase().includes('LEGALIZACION');
+                                  // Centrar verticalmente: headers, celdas con rowSpan grande, VISADO, y todas las celdas de tablas con muchas columnas
+                                  const shouldCenterVertically = cell.isHeader || (cell.rowSpan && cell.rowSpan > 1) || isVisadoTab || totalVisibleCols >= 3;
+                                  const vertAlign = shouldCenterVertically ? 'align-middle' : 'align-top';
+
                                   return (
                                     <td
                                       key={cell.id}
-                                      className={`border relative align-top ${
+                                      className={`border relative ${vertAlign} ${
                                         isFirstSectionLabel 
                                           ? 'border-gray-200 bg-gradient-to-r from-slate-50 to-gray-50 font-semibold text-gray-700'
                                           : isFirstSectionValue
@@ -1555,16 +1903,15 @@ export default function EditorSyllabusComisionPage() {
                                       onDoubleClick={() => { setModalCell({ id: cell.id, content: displayContent, isEditable: cell.isEditable && !isReadOnly }); setEditContent(displayContent); }}
                                     >
                                       <div 
-                                        className={`w-full h-full flex justify-start text-left ${isFirstSectionLabel ? 'px-2 py-1' : isFirstSectionValue ? 'px-2 py-1' : 'px-1 py-0'}`} 
+                                        className={`w-full h-full flex ${cell.isHeader ? 'justify-center text-center items-center' : shouldCenterVertically ? 'justify-start text-left items-center' : 'justify-start text-left items-start'} ${isFirstSectionLabel ? 'px-2 py-1' : isFirstSectionValue ? 'px-2 py-1' : 'px-1 py-0.5'}`} 
                                         style={{ 
                                           writingMode: isVertical ? 'vertical-rl' : 'horizontal-tb', 
                                           transform: isVertical ? 'rotate(180deg)' : 'none',
-                                          alignItems: 'flex-start',
                                           maxHeight: isVertical ? '100px' : 'none', 
                                           whiteSpace: isVertical ? 'nowrap' : 'pre-wrap', 
                                           overflow: 'hidden',
-                                          lineHeight: isFirstSection ? '1.4' : '1.15',
-                                          fontSize: isFirstSectionLabel ? '11.5px' : isVertical ? '9px' : '11px'
+                                          lineHeight: isFirstSection ? '1.4' : '1.3',
+                                          fontSize: isFirstSectionLabel ? '17px' : isVertical ? '9px' : '17px'
                                         }}
                                       >
                                         {editingCell === cell.id ? (
@@ -1578,8 +1925,8 @@ export default function EditorSyllabusComisionPage() {
                                           />
                                         ) : (
                                           <div 
-                                            className="whitespace-pre-wrap break-words w-full"
-                                            style={{ wordBreak: 'break-word', lineHeight: '1.15' }}
+                                            className={`whitespace-pre-wrap break-words w-full ${cell.isHeader ? 'text-center' : ''}`}
+                                            style={{ wordBreak: 'break-word', lineHeight: '1.3' }}
                                           >
                                             {displayContent || <span className="opacity-0">.</span>}
                                           </div>

@@ -639,7 +639,7 @@ export default function EditorProgramaAnaliticoComisionPage() {
     : savedProgramas;
   
   return (
-    <ProtectedRoute allowedRoles={["comision_academica", "administrador"]}>
+    <ProtectedRoute allowedRoles={["comision_academica", "comision", "administrador"]}>
       <div className="min-h-screen bg-gradient-to-b from-blue-50 via-white to-blue-50"
         style={{
           backgroundImage: 'radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.05) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(37, 99, 235, 0.05) 0%, transparent 50%)',

@@ -108,7 +108,44 @@ export default function AsignaturasComisionPage() {
     try {
       const token = localStorage.getItem('token');
       
-      // Verificar si ya existe
+      // 1) Primero verificar en tabla comisión académica
+      let existeEnComision = false;
+      let syllabusComision: any = null;
+      try {
+        const resComision = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/comision-academica/syllabus/buscar?asignatura_id=${asignaturaId}&periodo=${periodoSeleccionado}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        if (resComision.ok) {
+          const dataComision = await resComision.json();
+          if (dataComision?.data?.id) {
+            existeEnComision = true;
+            syllabusComision = dataComision.data;
+          }
+        }
+      } catch(e) { /* no existe en comisión */ }
+
+      if (existeEnComision && syllabusComision) {
+        const confirmar = confirm(
+          `⚠️ Ya existe un syllabus para "${asignaturaNombre}" en este periodo.\n\n` +
+          `Syllabus existente: ${syllabusComision.nombre}\n` +
+          `Fecha de creación: ${new Date(syllabusComision.createdAt || syllabusComision.created_at).toLocaleDateString()}\n\n` +
+          `¿Desea editarlo?`
+        );
+
+        if (confirmar) {
+          // Ver/editar el existente
+          router.push(`/dashboard/comision/editor-syllabus?id=${syllabusComision.id}&asignatura=${asignaturaId}&periodo=${periodoSeleccionado}&source=comision`);
+        }
+        return;
+      }
+
+      // 2) Verificar en tabla general (admin)
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/syllabi/verificar-existencia?periodo=${periodoSeleccionado}&asignatura_id=${asignaturaId}`,
         {
@@ -135,10 +172,10 @@ export default function AsignaturasComisionPage() {
           router.push(`/dashboard/comision/editor-syllabus?asignatura=${asignaturaId}&periodo=${periodoSeleccionado}&nueva=true`);
         } else {
           // Ver el existente
-          router.push(`/dashboard/comision/editor-syllabus?id=${data.syllabus.id}&asignatura=${asignaturaId}`);
+          router.push(`/dashboard/comision/editor-syllabus?id=${data.syllabus.id}&asignatura=${asignaturaId}&periodo=${periodoSeleccionado}&source=general`);
         }
       } else {
-        // No existe, crear nuevo
+        // No existe en ninguna tabla, crear nuevo
         router.push(`/dashboard/comision/editor-syllabus?asignatura=${asignaturaId}&periodo=${periodoSeleccionado}&nueva=true`);
       }
     } catch (err: any) {

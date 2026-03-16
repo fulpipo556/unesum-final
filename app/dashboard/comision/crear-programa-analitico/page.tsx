@@ -2084,7 +2084,7 @@ function buscarEnWordData(wordData: Record<string, any>, etiqueta: string): any 
     return false;
   };
   return (
-    <ProtectedRoute allowedRoles={["administrador", "comision_academica", "profesor"]}>
+    <ProtectedRoute allowedRoles={["administrador", "comision_academica", "comision", "profesor"]}>
       <div className="min-h-screen bg-gray-50">
         <MainHeader />
         <main className="max-w-7xl mx-auto px-6 py-8">

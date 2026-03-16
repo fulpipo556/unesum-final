@@ -1,7 +1,7 @@
 // docenteEditorController.js
 // Controlador para endpoints del editor docente (syllabus y programa analítico)
 
-const { SyllabusDocente, ProgramaAnaliticoDocente, SyllabusComisionAcademica, ProgramasAnaliticos, Profesor, Asignatura, Nivel, Paralelo, Carrera, Syllabus } = require('../models');
+const { SyllabusDocente, ProgramaAnaliticoDocente, SyllabusComisionAcademica, ProgramasAnaliticos, Profesor, Asignatura, Nivel, Paralelo, Carrera, Syllabus, Facultad, Periodo } = require('../models');
 const { Op } = require('sequelize');
 
 // =========================================================================
@@ -13,7 +13,15 @@ exports.getProfesorInfo = async (req, res) => {
     const profesor = await Profesor.findByPk(profesorId, {
       include: [
         { model: Asignatura, as: 'asignatura', include: [
-          { model: Carrera, as: 'carrera' }
+          { model: Carrera, as: 'carrera', include: [
+            { model: Facultad, as: 'facultad' }
+          ]}
+        ]},
+        // También incluir asignaturas por relación muchos-a-muchos (tabla profesor_asignaturas)
+        { model: Asignatura, as: 'asignaturas', include: [
+          { model: Carrera, as: 'carrera', include: [
+            { model: Facultad, as: 'facultad' }
+          ]}
         ]},
         { model: Nivel, as: 'nivel' },
         { model: Paralelo, as: 'paralelo' }
@@ -24,7 +32,16 @@ exports.getProfesorInfo = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Profesor no encontrado' });
     }
 
-    res.json({ success: true, data: profesor });
+    // Construir respuesta con asignatura efectiva
+    const profesorData = profesor.toJSON();
+    
+    // Si no tiene asignatura directa pero sí tiene por M2M, usar la primera
+    if (!profesorData.asignatura && profesorData.asignaturas && profesorData.asignaturas.length > 0) {
+      profesorData.asignatura = profesorData.asignaturas[0];
+      profesorData.asignatura_id = profesorData.asignaturas[0].id;
+    }
+
+    res.json({ success: true, data: profesorData });
   } catch (error) {
     console.error('Error getProfesorInfo:', error);
     res.status(500).json({ success: false, message: error.message });
@@ -44,44 +61,97 @@ exports.getSyllabusComision = async (req, res) => {
 
     let syllabus = null;
 
-    // 1. Buscar en tabla syllabus_comision_academica
+    // Resolver periodo: obtener tanto el ID como el nombre para buscar
+    let periodoValues = [];
     if (periodo) {
+      periodoValues.push(String(periodo));
+      try {
+        const periodoRecord = await Periodo.findByPk(parseInt(periodo));
+        if (periodoRecord && periodoRecord.nombre) {
+          periodoValues.push(periodoRecord.nombre);
+        }
+      } catch (e) { /* ignore */ }
+      // También buscar periodo por nombre (por si acaso enviaron el nombre)
+      if (periodoValues.length === 1) {
+        try {
+          const periodoByName = await Periodo.findOne({ where: { nombre: periodo } });
+          if (periodoByName) {
+            periodoValues.push(String(periodoByName.id));
+          }
+        } catch (e) { /* ignore */ }
+      }
+    }
+
+    // 1. Buscar en tabla syllabus_comision_academica por asignatura_id + periodo
+    if (periodoValues.length > 0) {
       syllabus = await SyllabusComisionAcademica.findOne({
         where: {
           asignatura_id: asignatura_id,
-          [Op.or]: [
-            { periodo: periodo },
-            { periodo: String(periodo) }
-          ]
+          periodo: { [Op.in]: periodoValues }
         },
         order: [['created_at', 'DESC']]
       });
     }
     
-    if (!syllabus && periodo) {
-      // 2. Buscar sin asignatura_id (syllabus genérico del periodo)
+    // 2. Buscar en syllabus_comision_academica solo por asignatura_id (sin filtrar periodo)
+    if (!syllabus) {
       syllabus = await SyllabusComisionAcademica.findOne({
-        where: { periodo: periodo },
+        where: { asignatura_id: asignatura_id },
         order: [['created_at', 'DESC']]
       });
     }
 
-    if (!syllabus) {
-      // 3. Buscar en tabla general syllabi
-      const whereClause = {};
-      if (periodo) {
-        whereClause.periodo = { [Op.in]: [periodo, String(periodo)] };
-      }
+    // 3. Buscar en syllabus_comision_academica por periodo (genérico, cualquier asignatura)
+    if (!syllabus && periodoValues.length > 0) {
+      syllabus = await SyllabusComisionAcademica.findOne({
+        where: { periodo: { [Op.in]: periodoValues } },
+        order: [['created_at', 'DESC']]
+      });
+    }
 
+    // 4. Buscar en tabla general syllabi por asignatura_id + periodo
+    if (!syllabus && periodoValues.length > 0) {
       syllabus = await Syllabus.findOne({
-        where: whereClause,
+        where: {
+          asignatura_id: asignatura_id,
+          periodo: { [Op.in]: periodoValues }
+        },
         order: [['createdAt', 'DESC']],
         paranoid: false
       });
     }
 
+    // 5. Buscar en tabla general syllabi solo por asignatura_id
     if (!syllabus) {
-      return res.status(404).json({ success: false, message: 'No se encontró syllabus para esta asignatura/periodo' });
+      syllabus = await Syllabus.findOne({
+        where: { asignatura_id: asignatura_id },
+        order: [['createdAt', 'DESC']],
+        paranoid: false
+      });
+    }
+
+    // 6. Buscar en tabla general syllabi por periodo (cualquier asignatura)
+    if (!syllabus && periodoValues.length > 0) {
+      syllabus = await Syllabus.findOne({
+        where: { periodo: { [Op.in]: periodoValues } },
+        order: [['createdAt', 'DESC']],
+        paranoid: false
+      });
+    }
+
+    // 7. Último recurso: cualquier syllabus de la comisión que exista
+    if (!syllabus) {
+      syllabus = await SyllabusComisionAcademica.findOne({
+        order: [['created_at', 'DESC']]
+      });
+    }
+
+    if (!syllabus) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'No se encontró ningún syllabus. La comisión académica debe subir primero un syllabus.',
+        debug: { asignatura_id, periodo, periodoValues }
+      });
     }
 
     // Parse datos_syllabus si es string
